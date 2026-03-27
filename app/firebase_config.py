@@ -1,5 +1,6 @@
 # Firebase Admin SDK Configuration
 import os
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 
@@ -20,15 +21,22 @@ def initialize_firebase():
     """Initialize the Firebase Admin SDK if not already initialized."""
     if not firebase_admin._apps:
         try:
-            cred_path = get_credentials_path()
-            if cred_path:
-                print(f"Loading Firebase credentials from: {cred_path}")
-                cred = credentials.Certificate(cred_path)
+            # First, try to read raw JSON credentials directly from environment
+            if "FIREBASE_CREDENTIALS_JSON" in os.environ and os.environ["FIREBASE_CREDENTIALS_JSON"].strip():
+                print("Loading Firebase credentials from Render FIREBASE_CREDENTIALS_JSON environment variable.")
+                cred_dict = json.loads(os.environ["FIREBASE_CREDENTIALS_JSON"])
+                cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred)
             else:
-                # Fallback to default credentials (e.g., if hosted on Google Cloud)
-                print(f"WARNING: No serviceAccountKey.json found. Falling back to application default credentials.")
-                firebase_admin.initialize_app()
+                cred_path = get_credentials_path()
+                if cred_path:
+                    print(f"Loading Firebase credentials from file: {cred_path}")
+                    cred = credentials.Certificate(cred_path)
+                    firebase_admin.initialize_app(cred)
+                else:
+                    # Fallback to default credentials (e.g., if hosted on Google Cloud)
+                    print(f"WARNING: No serviceAccountKey.json found. Falling back to application default credentials.")
+                    firebase_admin.initialize_app()
         except Exception as e:
             print(f"Failed to initialize Firebase Admin SDK: {e}")
 

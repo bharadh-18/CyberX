@@ -9,6 +9,8 @@ services:
         value: 3.11.0
       - key: FIREBASE_API_KEY
         sync: false
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: MASTER_ENCRYPTION_KEY

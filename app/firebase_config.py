@@ -5,19 +5,29 @@ from firebase_admin import credentials, firestore, auth
 
 # We expect a service application credentials JSON file in the root directory
 # For production, you could also construct this from environment variables
-CREDENTIALS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "serviceAccountKey.json")
+CREDENTIALS_PATH_LOCAL = os.path.join(os.path.dirname(os.path.dirname(__file__)), "serviceAccountKey.json")
+CREDENTIALS_PATH_RENDER = "/etc/secrets/serviceAccountKey.json"
 
+def get_credentials_path():
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ and os.path.exists(os.environ["GOOGLE_APPLICATION_CREDENTIALS"]):
+        return os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    if os.path.exists(CREDENTIALS_PATH_RENDER):
+        return CREDENTIALS_PATH_RENDER
+    if os.path.exists(CREDENTIALS_PATH_LOCAL):
+        return CREDENTIALS_PATH_LOCAL
+    return None
 def initialize_firebase():
     """Initialize the Firebase Admin SDK if not already initialized."""
     if not firebase_admin._apps:
         try:
-            if os.path.exists(CREDENTIALS_PATH):
-                cred = credentials.Certificate(CREDENTIALS_PATH)
+            cred_path = get_credentials_path()
+            if cred_path:
+                print(f"Loading Firebase credentials from: {cred_path}")
+                cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred)
             else:
                 # Fallback to default credentials (e.g., if hosted on Google Cloud)
-                # Or print a warning for the developer
-                print(f"WARNING: '{CREDENTIALS_PATH}' not found. Falling back to application default credentials.")
+                print(f"WARNING: No serviceAccountKey.json found. Falling back to application default credentials.")
                 firebase_admin.initialize_app()
         except Exception as e:
             print(f"Failed to initialize Firebase Admin SDK: {e}")

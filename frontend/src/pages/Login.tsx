@@ -1,86 +1,64 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { useAuthStore } from '@/stores/authStore';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { api } from '@/lib/api';
 import axios from 'axios';
 import { Shield, AlertCircle } from 'lucide-react';
+import { jwtDecode } from 'jwt-decode';
+import { signInWithPopup } from 'firebase/auth';
+import { firebaseAuth, googleProvider } from '@/lib/firebase';
 
-const loginSchema = z.object({
-  email: z.string().email('Invalid email format').transform(val => val.toLowerCase()),
-  password: z.string().min(1, 'Password is required'),
-});
-
-type LoginFormData = z.infer<typeof loginSchema>;
+interface DecodedToken {
+  sub: string;
+  roles: string[];
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
   
   const [errorMsg, setErrorMsg] = useState('');
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const [showCaptcha, setShowCaptcha] = useState(false);
-  const [captchaPassed, setCaptchaPassed] = useState(false);
-  
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema)
-  });
-  
-  const onSubmit = async (data: LoginFormData) => {
-    if (showCaptcha && !captchaPassed) {
-      setErrorMsg('Please complete the CAPTCHA first');
-      return;
-    }
+  const [loading, setLoading] = useState(false);
 
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setErrorMsg('');
     try {
-      setErrorMsg('');
-      
-      // Feature A1.2: Progressive delays to mitigate brute forcing on the client alongside the rate limiter
-      if (failedAttempts > 0) {
-        const delayMs = failedAttempts * 500; 
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
+      // Step 1: Firebase Google popup → get credential
+      const result = await signInWithPopup(firebaseAuth, googleProvider);
+      const idToken = await result.user.getIdToken();
 
-      const response = await api.post('/auth/login', {
-        email: data.email,
-        password: data.password,
+      // Step 2: Send Firebase ID token to backend (plain axios, no auth interceptor)
+      const response = await axios.post('/api/v1/auth/google', 
+        { id_token: idToken },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+
+      // Step 3: Decode CyberX JWT and store
+      const decoded = jwtDecode<DecodedToken>(response.data.access_token);
+      setAuth(response.data.access_token, {
+        id: decoded.sub,
+        email: result.user.email || '',
+        roles: decoded.roles || [],
       });
-      
-      // Success: Reset metrics
-      setFailedAttempts(0);
-      setShowCaptcha(false);
-
-      if (response.data.mfa_required) {
-        navigate('/mfa-verify', { state: { token: response.data.token } });
-      } else {
-        setAuth(response.data.access_token);
-        navigate('/dashboard');
-      }
-      
+      navigate('/dashboard');
     } catch (error: unknown) {
-      const newAttempts = failedAttempts + 1;
-      setFailedAttempts(newAttempts);
-
-      if (newAttempts >= 3) {
-        setShowCaptcha(true);
-        setCaptchaPassed(false);
-      }
-
+      console.error('Google Sign-In Error:', error);
       if (axios.isAxiosError(error)) {
-        if (error.response?.status === 429) {
-          setErrorMsg('Too many login attempts. Please try again later.');
-        } else if (error.response?.status === 401) {
-          setErrorMsg('Invalid email or password');
-        } else if (error.response?.status === 403) {
-          setErrorMsg(error.response.data.detail || 'Account locked');
+        setErrorMsg(error.response?.data?.detail || 'Backend authentication failed. Please try again.');
+      } else if (error instanceof Error) {
+        // Firebase popup errors
+        if (error.message.includes('popup-closed')) {
+          setErrorMsg('Sign-in popup was closed. Please try again.');
+        } else if (error.message.includes('network')) {
+          setErrorMsg('Network error. Please check your connection.');
         } else {
-          setErrorMsg('Login failed. Please try again.');
+          setErrorMsg('Google sign-in failed. Make sure Google is enabled in Firebase Console.');
         }
       } else {
-        setErrorMsg('An unexpected network error occurred.');
+        setErrorMsg('An unexpected error occurred.');
       }
+    } finally {
+      setLoading(false);
     }
   };
   
@@ -91,67 +69,37 @@ export default function Login() {
           <div className="flex justify-center mb-4">
             <Shield className="w-12 h-12 text-indigo-500" />
           </div>
-          <h2 className="text-2xl font-bold tracking-tight">Welcome Back</h2>
-          <p className="text-[var(--text-secondary)] text-sm mt-2">Sign in to your secure account</p>
+          <h2 className="text-2xl font-bold tracking-tight">Welcome to CyberX</h2>
+          <p className="text-[var(--text-secondary)] text-sm mt-2">Sign in with your Google account to continue</p>
         </div>
         
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Email Address</label>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              {...register('email')}
-              className="input-field"
-            />
-            {errors.email && <p className="text-sm text-red-400 mt-1 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{errors.email.message}</p>}
+        {errorMsg && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-md text-sm flex items-start gap-2 mb-6">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
-          
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Password</label>
-            <input
-              type="password"
-              placeholder="••••••••••••"
-              {...register('password')}
-              className="input-field"
-            />
-            {errors.password && <p className="text-sm text-red-400 mt-1 flex items-center gap-1"><AlertCircle className="w-4 h-4" />{errors.password.message}</p>}
-          </div>
-          
-          {showCaptcha && (
-            <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-md space-y-3">
-              <label className="block text-xs font-semibold text-amber-400 uppercase tracking-wider">Security Check</label>
-              <div className="flex items-center justify-between bg-black/40 p-3 rounded">
-                <span className="text-sm">I am securely resolving this login</span>
-                <input 
-                  type="checkbox" 
-                  checked={captchaPassed}
-                  onChange={(e) => setCaptchaPassed(e.target.checked)}
-                  className="w-5 h-5 accent-indigo-500"
-                />
-              </div>
-            </div>
-          )}
-          
-          {errorMsg && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-md text-sm flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-          
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full btn-primary py-2.5 rounded-lg font-semibold flex items-center justify-center disabled:opacity-50"
-          >
-            {isSubmitting ? 'Authenticating...' : 'Sign In'}
-          </button>
-        </form>
-        
-        <div className="text-center mt-6 text-sm text-[var(--text-secondary)]">
-          Don't have an account? <Link to="/register" className="text-indigo-400 hover:underline">Register here</Link>
-        </div>
+        )}
+
+        {/* Google Sign-In Button */}
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-3 py-3 rounded-lg border border-slate-700 bg-white hover:bg-slate-100 transition-all text-sm font-semibold disabled:opacity-50 text-slate-800"
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          {loading ? 'Signing in...' : 'Sign in with Google'}
+        </button>
+
+        <p className="text-center mt-6 text-xs text-[var(--text-secondary)] leading-relaxed">
+          By signing in, you agree to CyberX's Zero-Trust security policies.<br />
+          Your session will be secured with RS256 JWT tokens.
+        </p>
       </div>
     </div>
   );

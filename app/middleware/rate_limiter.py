@@ -4,8 +4,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import redis.asyncio as redis
 from app.config import settings
-
-redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+from app.services.cache import redis_client
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):

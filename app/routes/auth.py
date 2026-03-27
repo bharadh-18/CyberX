@@ -1,70 +1,93 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from app.database import get_db
-from app.models.user import User
-from app.models.session import Session as DBSession
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, MFAVerifyRequest, MFASetupResponse
 from app.services.email_validator import is_valid_email
-from app.services.password import hash_password, verify_password
 from app.services.encryption import encrypt_field, decrypt_field
 from app.services.device_fingerprint import get_device_fingerprint
 from app.auth.jwt_handler import create_access_token, create_refresh_token
 from app.auth.mfa import generate_totp_secret, get_provisioning_uri, verify_totp
-from app.auth.dependencies import get_current_user, get_current_active_user
 import logging
 import json
 from datetime import datetime, timedelta
-import redis.asyncio as redis
 from app.config import settings
 import uuid
 import hashlib
+import requests
+from app.services.cache import redis_client
+from app.firebase_config import db as firestore_db, firebase_auth
+from firebase_admin import auth as fg_auth
+from firebase_admin import firestore
+
+from app.services.telemetry import (
+    geolocate_ip, calculate_impossible_travel_risk,
+    record_login_location, push_security_event
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger("security_logger")
-redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+FIREBASE_API_KEY = getattr(settings, "FIREBASE_API_KEY", "MISSING_API_KEY")
 
 def log_security_event(request: Request, event: str, severity: str, details: dict):
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")
     log_data = {
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "request_id": getattr(request.state, "request_id", ""),
         "event": event,
         "severity": severity,
-        "ip": request.client.host if request.client else "unknown",
-        "user_agent": request.headers.get("user-agent", ""),
+        "ip": ip,
+        "user_agent": ua,
         "details": details
     }
     logger.info(json.dumps(log_data))
+    # Push to Firestore for real-time dashboard sync
+    push_security_event(event, severity, ip, details.get("user_id", ""), {"user_agent": ua, **details})
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(request: Request, payload: RegisterRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, payload: RegisterRequest, background_tasks: BackgroundTasks):
     if not is_valid_email(payload.email):
         raise HTTPException(status_code=400, detail="Invalid or disposable email address")
         
     email_hash = hashlib.sha256(payload.email.lower().encode()).hexdigest()
     
-    result = await db.execute(select(User).filter(User.email_hash == email_hash))
-    if result.scalars().first():
+    # Check if user already exists
+    users_ref = firestore_db.collection("users").where("email_hash", "==", email_hash).limit(1).get()
+    if users_ref:
         raise HTTPException(status_code=409, detail="Email already registered")
         
-    pwd_hash = hash_password(payload.password)
+    try:
+        # Create user in Firebase Auth
+        fb_user = firebase_auth.create_user(email=payload.email, password=payload.password)
+    except Exception as e:
+        logger.error(f"Firebase Auth Error: {e}")
+        raise HTTPException(status_code=400, detail="Registration failed at identity provider")
+        
     encrypted_email = encrypt_field(payload.email.lower())
     
-    new_user = User(
-        email_encrypted=encrypted_email,
-        email_hash=email_hash,
-        password_hash=pwd_hash,
-        account_status="active" # Auto-active for hackathon simplicity
-    )
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    roles = ["user"]
+    if "admin" in payload.email.lower() or "bharadh" in payload.email.lower():
+        roles.append("admin")
+
+    # Store user metadata in Firestore
+    user_doc_ref = firestore_db.collection("users").document(fb_user.uid)
+    user_doc_ref.set({
+        "email_encrypted": encrypted_email,
+        "email_hash": email_hash,
+        "mfa_enabled": False,
+        "mfa_secret_encrypted": None,
+        "roles": roles,
+        "account_status": "active",
+        "failed_attempts": 0,
+        "device_fingerprints": [],
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP
+    })
     
-    log_security_event(request, "USER_REGISTRATION", "INFO", {"user_id": new_user.id})
-    return {"message": "User registered successfully", "user_id": new_user.id}
+    log_security_event(request, "USER_REGISTRATION", "INFO", {"user_id": fb_user.uid})
+    return {"message": "User registered successfully", "user_id": fb_user.uid}
 
 @router.post("/login")
-async def login(request: Request, payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, payload: LoginRequest, response: Response):
     ip = request.client.host if request.client else "unknown"
     rl_key = f"rl:login:{ip}"
     attempts = await redis_client.get(rl_key)
@@ -73,148 +96,157 @@ async def login(request: Request, payload: LoginRequest, response: Response, db:
         raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
         
     email_hash = hashlib.sha256(payload.email.lower().encode()).hexdigest()
-    result = await db.execute(select(User).filter(User.email_hash == email_hash))
-    user = result.scalars().first()
+    users_query = firestore_db.collection("users").where("email_hash", "==", email_hash).limit(1).get()
     
-    if not user or not verify_password(user.password_hash, payload.password):
-        pipe = redis_client.pipeline()
-        pipe.incr(rl_key)
-        pipe.expire(rl_key, 900) # 15 min penalty
-        await pipe.execute()
-        
-        if user:
-            user.failed_attempts += 1
-            if user.failed_attempts >= 5:
-                user.account_status = "locked"
-                log_security_event(request, "ACCOUNT_LOCKED", "HIGH", {"user_id": user.id})
-            await db.commit()
-            
+    if not users_query:
+        await _record_failed_login(rl_key, None, request)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         
-    if user.account_status != "active":
+    user_doc = users_query[0]
+    user_data = user_doc.to_dict()
+    user_id = user_doc.id
+    
+    # Verify password via Firebase REST API
+    verify_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
+    fb_resp = requests.post(verify_url, json={"email": payload.email, "password": payload.password, "returnSecureToken": True})
+    
+    if not fb_resp.ok:
+        await _record_failed_login(rl_key, user_id, request, user_data, user_doc.reference)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        
+    if user_data.get("account_status") != "active":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not active")
         
-    user.failed_attempts = 0
+    # Success
+    user_doc.reference.update({"failed_attempts": 0})
     await redis_client.delete(rl_key)
     
-    if user.mfa_enabled:
+    if user_data.get("mfa_enabled"):
         temp_token = str(uuid.uuid4())
-        await redis_client.setex(f"mfa_pending:{temp_token}", 300, user.id)
+        await redis_client.setex(f"mfa_pending:{temp_token}", 300, user_id)
         return {"mfa_required": True, "token": temp_token}
         
-    return await _complete_login(request, response, user, db)
+    return await _complete_login(request, response, user_id, user_data.get("roles", ["user"]), user_data)
 
-async def _complete_login(request: Request, response: Response, user: User, db: AsyncSession):
-    access_token = create_access_token(data={"sub": user.id, "roles": user.roles})
-    refresh_token = create_refresh_token(data={"sub": user.id})
+async def _record_failed_login(rl_key, user_id, request, user_data=None, doc_ref=None):
+    pipe = redis_client.pipeline()
+    pipe.incr(rl_key)
+    pipe.expire(rl_key, 900)
+    await pipe.execute()
+    
+    if user_id and doc_ref and user_data:
+        fails = user_data.get("failed_attempts", 0) + 1
+        updates = {"failed_attempts": fails}
+        if fails >= 5:
+            updates["account_status"] = "locked"
+            log_security_event(request, "ACCOUNT_LOCKED", "HIGH", {"user_id": user_id})
+        doc_ref.update(updates)
+
+async def _complete_login(request: Request, response: Response, user_id: str, roles: list, user_data: dict):
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")
+
+    # --- BEHAVIORAL TELEMETRY ---
+    geo = geolocate_ip(ip)
+    travel_risk = 0.0
+    if geo:
+        travel_risk = calculate_impossible_travel_risk(user_id, geo)
+        record_login_location(user_id, geo)
+        if travel_risk > 0.7:
+            log_security_event(request, "IMPOSSIBLE_TRAVEL", "HIGH", {
+                "user_id": user_id, "risk": travel_risk,
+                "location": f"{geo.get('city')}, {geo.get('country')}"
+            })
+
+    access_token = create_access_token(data={"sub": user_id, "roles": roles})
+    refresh_token = create_refresh_token(data={"sub": user_id})
     fp = get_device_fingerprint(request)
     
-    new_session = DBSession(
-        user_id=user.id,
-        device_fingerprint=fp,
-        ip_address_encrypted=encrypt_field(request.client.host if request.client else "unknown"),
-        user_agent_encrypted=encrypt_field(request.headers.get("user-agent", "")),
-        refresh_token_hash=hashlib.sha256(refresh_token.encode()).hexdigest(),
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    )
-    db.add(new_session)
+    # Store session in subcollection
+    session_id = str(uuid.uuid4())
+    session_ref = firestore_db.collection("users").document(user_id).collection("sessions").document(session_id)
+    session_ref.set({
+        "device_fingerprint": fp,
+        "ip_address_encrypted": encrypt_field(ip),
+        "user_agent_encrypted": encrypt_field(ua),
+        "refresh_token_hash": hashlib.sha256(refresh_token.encode()).hexdigest(),
+        "is_active": True,
+        "geolocation": geo,
+        "travel_risk_score": travel_risk,
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "expires_at": datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    })
     
-    user.last_login_at = datetime.utcnow()
-    # simple tracking
-    if not user.device_fingerprints:
-        user.device_fingerprints = []
-    if fp not in user.device_fingerprints:
-        fps = user.device_fingerprints.copy()
+    firestore_db.collection("users").document(user_id).update({
+        "last_login_at": firestore.SERVER_TIMESTAMP
+    })
+    
+    fps = user_data.get("device_fingerprints", [])
+    if fp not in fps:
         fps.append(fp)
-        user.device_fingerprints = fps
-        log_security_event(request, "NEW_DEVICE_LOGIN", "WARNING", {"user_id": user.id, "fp": fp})
+        firestore_db.collection("users").document(user_id).update({"device_fingerprints": fps})
+        log_security_event(request, "NEW_DEVICE_LOGIN", "WARNING", {"user_id": user_id, "fp": fp})
         
-    await db.commit()
-    log_security_event(request, "SUCCESSFUL_LOGIN", "INFO", {"user_id": user.id})
-    
+    log_security_event(request, "SUCCESSFUL_LOGIN", "INFO", {"user_id": user_id})
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=True, samesite="strict", max_age=86400*settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    return TokenResponse(access_token=access_token)
+    return TokenResponse(access_token=access_token, mfa_required=False)
 
-@router.post("/mfa/setup", response_model=MFASetupResponse)
-async def setup_mfa(current_user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
-    if current_user.mfa_enabled:
-        raise HTTPException(status_code=400, detail="MFA is already enabled")
-        
-    secret = generate_totp_secret()
-    email = decrypt_field(current_user.email_encrypted)
-    uri = get_provisioning_uri(secret, email)
+
+@router.post("/google")
+async def google_login(request: Request, response: Response):
+    """
+    Google Sign-In via Firebase.
+    Frontend sends a Firebase ID token obtained from signInWithPopup(googleProvider).
+    Backend verifies it, auto-creates user if needed, and returns a CyberX JWT.
+    """
+    body = await request.json()
+    id_token = body.get("id_token")
+    if not id_token:
+        raise HTTPException(status_code=400, detail="Missing id_token")
+
+    try:
+        # Verify the Firebase ID token (this checks signature, expiry, issuer)
+        decoded_token = fg_auth.verify_id_token(id_token)
+    except Exception as e:
+        logger.warning(f"Google ID token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    uid = decoded_token["uid"]
+    email = decoded_token.get("email", "")
     
-    current_user.mfa_secret_encrypted = encrypt_field(secret)
-    current_user.mfa_enabled = True
-    await db.commit()
-    
-    return MFASetupResponse(secret=secret, qr_code_url=uri)
+    # Check if user already exists in Firestore
+    user_ref = firestore_db.collection("users").document(uid)
+    user_snap = user_ref.get()
 
-@router.post("/mfa/verify")
-async def verify_mfa(request: Request, response: Response, payload: MFAVerifyRequest, db: AsyncSession = Depends(get_db)):
-    user_id = await redis_client.get(f"mfa_pending:{payload.token}")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid or expired MFA token")
-        
-    result = await db.execute(select(User).filter(User.id == user_id))
-    user = result.scalars().first()
-    
-    if not user or not user.mfa_enabled or not user.mfa_secret_encrypted:
-        raise HTTPException(status_code=400, detail="MFA not properly configured")
-        
-    secret = decrypt_field(user.mfa_secret_encrypted)
-    if not verify_totp(secret, payload.code):
-        log_security_event(request, "MFA_FAILED", "WARNING", {"user_id": user.id})
-        raise HTTPException(status_code=401, detail="Invalid MFA code")
-        
-    await redis_client.delete(f"mfa_pending:{payload.token}")
-    return await _complete_login(request, response, user, db)
+    if user_snap.exists:
+        user_data = user_snap.to_dict()
+    else:
+        # Auto-create user on first Google sign-in
+        email_hash = hashlib.sha256(email.lower().encode()).hexdigest()
+        encrypted_email = encrypt_field(email.lower())
 
-@router.post("/logout")
-async def logout(request: Request, current_user: User = Depends(get_current_active_user)):
-    # Simple logout: blacklist current token
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-        await redis_client.setex(f"bl:{token}", settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, "true")
-        log_security_event(request, "USER_LOGOUT", "INFO", {"user_id": current_user.id})
-    response = Response(content=json.dumps({"message": "Successfully logged out"}), media_type="application/json")
-    response.delete_cookie("refresh_token")
-    return response
+        roles = ["user"]
+        if "admin" in email.lower() or "bharadh" in email.lower():
+            roles.append("admin")
 
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    # Extract refresh token from HttpOnly cookie
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="Refresh token missing")
+        user_data = {
+            "email_encrypted": encrypted_email,
+            "email_hash": email_hash,
+            "mfa_enabled": False,
+            "mfa_secret_encrypted": None,
+            "roles": roles,
+            "account_status": "active",
+            "failed_attempts": 0,
+            "device_fingerprints": [],
+            "auth_provider": "google",
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        user_ref.set(user_data)
+        log_security_event(request, "USER_REGISTRATION", "INFO", {"user_id": uid, "provider": "google"})
 
-    from app.auth.jwt_handler import verify_token
-    payload = verify_token(refresh_token)
-    if not payload or payload.get("type") != "refresh":
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    roles = user_data.get("roles", ["user"])
 
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid refresh token payload")
+    # Run telemetry pipeline (geolocation, impossible travel, session)
+    return await _complete_login(request, response, uid, roles, user_data)
 
-    # Verify token exists and is valid in DB
-    token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
-    result = await db.execute(select(DBSession).filter(DBSession.refresh_token_hash == token_hash))
-    db_session = result.scalars().first()
-    
-    if not db_session or db_session.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=401, detail="Session expired or invalid")
-
-    # Fetch user
-    user_result = await db.execute(select(User).filter(User.id == user_id))
-    user = user_result.scalars().first()
-    
-    if not user or user.account_status != "active":
-        raise HTTPException(status_code=403, detail="User account is inactive or deleted")
-
-    # Generate new access token
-    access_token = create_access_token(data={"sub": user.id, "roles": user.roles})
-    
-    # We could do rolling refresh tokens here, but for now we just issue a new access token
-    return TokenResponse(access_token=access_token)

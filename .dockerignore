@@ -1,0 +1,39 @@
+# Version control
+.git
+.gitignore
+
+# Frontend (deployed separately to Firebase Hosting)
+frontend/
+node_modules/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Tests (not needed in production)
+tests/
+pytest.ini
+
+# Environment files (secrets injected via Cloud Run env vars)
+.env
+.env.example
+
+# IDE
+.vscode/
+.idea/
+.gemini/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database (local dev only)
+zero_trust.db
+
+# Other
+functions/
+REFERENCE.md
+README.md
+serviceAccountKey.example.json

@@ -18,6 +18,7 @@ zero_trust.db
 # Security
 keys/private_key.pem
 keys/public_key.pem
+serviceAccountKey.json
 
 # Node
 node_modules/

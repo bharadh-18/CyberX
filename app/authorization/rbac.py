@@ -1,5 +1,4 @@
 from fastapi import Depends, HTTPException, status
-from app.models.user import User
 from app.auth.dependencies import get_current_active_user
 
 ROLE_PERMISSIONS = {
@@ -12,9 +11,9 @@ class RequirePermission:
     def __init__(self, permission: str):
         self.permission = permission
 
-    async def __call__(self, current_user: User = Depends(get_current_active_user)):
+    async def __call__(self, current_user: dict = Depends(get_current_active_user)):
         user_permissions = set()
-        for role in current_user.roles:
+        for role in current_user.get("roles", []):
             user_permissions.update(ROLE_PERMISSIONS.get(role, set()))
             if role == "admin":
                 return True

@@ -6,61 +6,86 @@ export default function Landing() {
   const { accessToken } = useAuthStore();
 
   return (
-    <div className="relative min-h-[calc(100vh-64px)] mt-16 overflow-hidden flex flex-col items-center justify-center py-20">
-      {/* Background elements */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-500/10 rounded-full blur-[100px] -z-10 pointer-events-none mix-blend-screen" />
-      <div className="absolute top-1/4 right-1/4 w-[400px] h-[400px] bg-sky-500/10 rounded-full blur-[80px] -z-10 pointer-events-none mix-blend-screen" />
-      <div className="absolute bottom-1/4 left-1/4 w-[600px] h-[600px] bg-purple-500/10 rounded-full blur-[120px] -z-10 pointer-events-none mix-blend-screen" />
+    <div className="relative min-h-[calc(100vh-64px)] mt-16 overflow-hidden flex flex-col items-center justify-center py-20 px-4">
+      {/* Sleek Enterprise Grid Background */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-40 mix-blend-screen pointer-events-none -z-10" />
 
-      <div className="text-center max-w-4xl px-6 relative z-10">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 font-semibold text-sm mb-8">
-          <ShieldCheck className="w-4 h-4" />
-          Zero-Trust Architecture Standard
+      <div className="text-center max-w-4xl relative z-10 w-full">
+        <div 
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-secondary)] font-medium text-xs mb-8 tracking-wider uppercase animate-fade-up"
+          style={{ animationDelay: '0.1s', opacity: 0, animationFillMode: 'forwards' }}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          Enterprise Zero-Trust Standard
         </div>
 
-        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+        <h1 
+          className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.05] animate-fade-up text-white"
+          style={{ animationDelay: '0.2s', opacity: 0, animationFillMode: 'forwards' }}
+        >
           Security-First <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-sky-400">
-            Frontend Architecture
+          <span className="text-transparent bg-clip-text bg-gradient-to-br from-white via-slate-300 to-slate-500">
+            AI Cyber Defense
           </span>
         </h1>
 
-        <p className="text-xl text-[var(--text-secondary)] mb-10 max-w-2xl mx-auto leading-relaxed">
+        <p 
+          className="text-lg text-[var(--text-secondary)] mb-10 max-w-2xl mx-auto leading-relaxed animate-fade-up"
+          style={{ animationDelay: '0.3s', opacity: 0, animationFillMode: 'forwards' }}
+        >
           Integrated with a Python FastAPI backend enforcing TLS 1.3, Rate Limiting, RS256 JWT, multi-factor auth, and AI-powered phishing detection heuristics.
         </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div 
+          className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-up"
+          style={{ animationDelay: '0.4s', opacity: 0, animationFillMode: 'forwards' }}
+        >
           {!accessToken ? (
-            <>
-              <Link to="/register" className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-lg shadow-[0_0_30px_rgba(79,70,229,0.3)] transition-all hover:scale-105">
-                Start Secure Session
+              <Link to="/login" className="w-full sm:w-auto btn-primary">
+                Sign in with Google &rarr;
               </Link>
-              <Link to="/login" className="w-full sm:w-auto px-8 py-3.5 bg-black/40 hover:bg-black/60 border border-white/10 text-white font-bold rounded-lg backdrop-blur-sm transition-all">
-                Login with MFA
-              </Link>
-            </>
           ) : (
-            <Link to="/dashboard" className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105">
-              Enter Dashboard
+            <Link to="/dashboard" className="w-full sm:w-auto btn-primary">
+              Enter Command Center
             </Link>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 text-left">
-          <div className="glass-card p-6 border-t-2 border-indigo-500/50 hover:bg-white/5 transition-colors">
-            <Lock className="w-8 h-8 text-indigo-400 mb-4" />
-            <h3 className="font-bold text-lg mb-2">Defense in Depth</h3>
-            <p className="text-[var(--text-secondary)] text-sm">7 distinct backend layers validating rate limits, structure, headers, auth, and logic on every single request.</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24 text-left">
+          <div 
+            className="glass-card p-6 animate-fade-up group relative overflow-hidden"
+            style={{ animationDelay: '0.5s', opacity: 0, animationFillMode: 'forwards' }}
+          >
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50" />
+            <div className="w-10 h-10 mb-5 flex items-center">
+              <Lock className="w-6 h-6 text-indigo-400 group-hover:text-white transition-colors" />
+            </div>
+            <h3 className="font-semibold text-lg mb-2 text-white tracking-tight">Defense in Depth</h3>
+            <p className="text-[var(--text-secondary)] text-sm leading-relaxed">7 distinct layers validating rate limits, structure, headers, auth, and logic on every single API request.</p>
           </div>
-          <div className="glass-card p-6 border-t-2 border-purple-500/50 hover:bg-white/5 transition-colors">
-            <Bot className="w-8 h-8 text-purple-400 mb-4" />
-            <h3 className="font-bold text-lg mb-2">AI Phishing Sandbox</h3>
-            <p className="text-[var(--text-secondary)] text-sm">Real-time analysis pipeline parsing unstructured text for credential harvesting, URL reputation, and social engineering.</p>
+          
+          <div 
+            className="glass-card p-6 animate-fade-up group relative overflow-hidden"
+            style={{ animationDelay: '0.6s', opacity: 0, animationFillMode: 'forwards' }}
+          >
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-50" />
+            <div className="w-10 h-10 mb-5 flex items-center">
+              <Bot className="w-6 h-6 text-purple-400 group-hover:text-white transition-colors" />
+            </div>
+            <h3 className="font-semibold text-lg mb-2 text-white tracking-tight">AI Threat Sandbox</h3>
+            <p className="text-[var(--text-secondary)] text-sm leading-relaxed">Real-time ML analysis pipeline parsing text for credential harvesting and social engineering vectors.</p>
           </div>
-          <div className="glass-card p-6 border-t-2 border-sky-500/50 hover:bg-white/5 transition-colors">
-            <Activity className="w-8 h-8 text-sky-400 mb-4" />
-            <h3 className="font-bold text-lg mb-2">Envelope Encryption</h3>
-            <p className="text-[var(--text-secondary)] text-sm">PII and authentication secrets mapped securely through AES-256-GCM data encryption keys wrapped via Master keys.</p>
+          
+          <div 
+            className="glass-card p-6 animate-fade-up group relative overflow-hidden"
+            style={{ animationDelay: '0.7s', opacity: 0, animationFillMode: 'forwards' }}
+          >
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-sky-500 to-transparent opacity-50" />
+            <div className="w-10 h-10 mb-5 flex items-center">
+              <Activity className="w-6 h-6 text-sky-400 group-hover:text-white transition-colors" />
+            </div>
+            <h3 className="font-semibold text-lg mb-2 text-white tracking-tight">Envelope Encryption</h3>
+            <p className="text-[var(--text-secondary)] text-sm leading-relaxed">PII uniquely mapped through AES-256-GCM data encryption keys wrapped securely via Master KEKs.</p>
           </div>
         </div>
       </div>

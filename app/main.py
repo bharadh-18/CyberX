@@ -1,8 +1,8 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.config import settings
-from app.database import engine, Base
 from app.auth.jwt_handler import generate_keys
 from app.services.security_logger import setup_logger
 import os
@@ -25,6 +25,13 @@ app.add_middleware(InputValidationMiddleware)
 app.add_middleware(RateLimiterMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(api_router, prefix="/api/v1")
 
@@ -39,10 +46,4 @@ async def serve_frontend():
 @app.on_event("startup")
 async def startup_event():
     generate_keys()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await engine.dispose()
 

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from '@/components/layout/Navbar';
 import PrivateRoute from '@/components/common/PrivateRoute';
+import AdminRoute from '@/components/common/AdminRoute';
 
 import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
@@ -9,6 +10,10 @@ import MFAVerify from '@/pages/MFAVerify';
 import Dashboard from '@/pages/Dashboard';
 import Profile from '@/pages/Profile';
 import PhishingAnalyzer from '@/pages/PhishingAnalyzer';
+import PhishingSimulation from '@/pages/PhishingSimulation';
+import NetworkScanner from '@/pages/NetworkScanner';
+import FakeLogin from '@/pages/FakeLogin';
+import AdminDashboard from '@/pages/AdminDashboard';
 import { useTokenRefresh } from '@/hooks/useTokenRefresh';
 
 function AppRoot() {
@@ -31,6 +36,14 @@ function AppRoot() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/analyzer" element={<PhishingAnalyzer />} />
+              <Route path="/simulator" element={<PhishingSimulation />} />
+              <Route path="/scanner" element={<NetworkScanner />} />
+              <Route path="/fake-login" element={<FakeLogin />} />
+              
+              {/* Admin Only Routes */}
+              <Route element={<AdminRoute />}>
+                <Route path="/admin" element={<AdminDashboard />} />
+              </Route>
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -4,6 +4,12 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import axios from 'axios';
 import { KeyRound, AlertCircle } from 'lucide-react';
+import { jwtDecode } from 'jwt-decode';
+
+interface DecodedToken {
+  sub: string;
+  roles: string[];
+}
 
 export default function MFAVerify() {
   const navigate = useNavigate();
@@ -33,7 +39,12 @@ export default function MFAVerify() {
     try {
       setErrorMsg('');
       const response = await api.post('/auth/mfa/verify', { token, code });
-      setAuth(response.data.access_token);
+      const decoded = jwtDecode<DecodedToken>(response.data.access_token);
+      setAuth(response.data.access_token, { 
+        id: decoded.sub, 
+        email: 'user', // Email is not in MFA payload, but ID/roles are sufficient for frontend auth
+        roles: decoded.roles || [] 
+      });
       navigate('/dashboard');
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {

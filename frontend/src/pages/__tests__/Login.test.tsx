@@ -1,4 +1,3 @@
-/// <reference types="vitest" />
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';

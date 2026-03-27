@@ -6,7 +6,11 @@ from app.config import settings
 engine = create_async_engine(
     settings.DATABASE_URL, 
     echo=(settings.LOG_LEVEL == "DEBUG"),
-    poolclass=NullPool
+    poolclass=NullPool,
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    }
 )
 
 AsyncSessionLocal = async_sessionmaker(

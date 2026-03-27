@@ -24,8 +24,13 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState<SecurityMetrics | null>(null);
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   
+  interface ChartPoint {
+    time: string;
+    count: number;
+  }
+
   // Transform events for Recharts (Count per hour)
-  const chartData = events.reduce((acc: any[], current) => {
+  const chartData = events.reduce((acc: ChartPoint[], current) => {
     const time = new Date(current.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const existing = acc.find(item => item.time === time);
     if (existing) {

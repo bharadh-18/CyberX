@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import axios from 'axios';
 import { Shield, AlertCircle } from 'lucide-react';
 
 const loginSchema = z.object({
@@ -58,7 +59,7 @@ export default function Login() {
         navigate('/dashboard');
       }
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       const newAttempts = failedAttempts + 1;
       setFailedAttempts(newAttempts);
 
@@ -67,14 +68,18 @@ export default function Login() {
         setCaptchaPassed(false);
       }
 
-      if (error.response?.status === 429) {
-        setErrorMsg('Too many login attempts. Please try again later.');
-      } else if (error.response?.status === 401) {
-        setErrorMsg('Invalid email or password');
-      } else if (error.response?.status === 403) {
-        setErrorMsg(error.response.data.detail || 'Account locked');
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          setErrorMsg('Too many login attempts. Please try again later.');
+        } else if (error.response?.status === 401) {
+          setErrorMsg('Invalid email or password');
+        } else if (error.response?.status === 403) {
+          setErrorMsg(error.response.data.detail || 'Account locked');
+        } else {
+          setErrorMsg('Login failed. Please try again.');
+        }
       } else {
-        setErrorMsg('Login failed. Please try again.');
+        setErrorMsg('An unexpected network error occurred.');
       }
     }
   };

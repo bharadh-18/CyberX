@@ -2,6 +2,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import axios from 'axios';
 import { KeyRound, AlertCircle } from 'lucide-react';
 
 export default function MFAVerify() {
@@ -34,8 +35,12 @@ export default function MFAVerify() {
       const response = await api.post('/auth/mfa/verify', { token, code });
       setAuth(response.data.access_token);
       navigate('/dashboard');
-    } catch (error: any) {
-      setErrorMsg(error.response?.data?.detail || 'Invalid MFA code');
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        setErrorMsg(error.response?.data?.detail || 'Invalid MFA code');
+      } else {
+        setErrorMsg('MFA verification system error');
+      }
     } finally {
       setIsSubmitting(false);
     }

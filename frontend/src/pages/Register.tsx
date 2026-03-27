@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import axios from 'axios';
 import { ShieldCheck, AlertCircle } from 'lucide-react';
 
 const registerSchema = z.object({
@@ -24,15 +25,14 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 export default function Register() {
   const navigate = useNavigate();
   const [errorMsg, setErrorMsg] = useState('');
-  const [pwdValue, setPwdValue] = useState('');
   
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema)
   });
   
-  // Custom tracking for strength meter
-  const currentPwd = watch('password', '');
-  if (currentPwd !== pwdValue) setPwdValue(currentPwd);
+  // Directly watch the password for the strength meter
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const pwdValue = watch('password', '');
   
   const onSubmit = async (data: RegisterFormData) => {
     try {
@@ -41,10 +41,13 @@ export default function Register() {
         email: data.email,
         password: data.password,
       });
-      // Immediately redirect to login on success
       navigate('/login');
-    } catch (error: any) {
-      setErrorMsg(error.response?.data?.detail || 'Registration failed');
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        setErrorMsg(error.response?.data?.detail || 'Registration failed');
+      } else {
+        setErrorMsg('An unexpected security error occurred');
+      }
     }
   };
 
@@ -77,9 +80,8 @@ export default function Register() {
           
           <div>
             <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Password</label>
-            <input type="password" placeholder="Min 12 chars, strict rules" {...register('password')} className="input-field" />
+            <input type="password" placeholder="Min 12 characters" {...register('password')} className="input-field" />
             
-            {/* Strength Meter */}
             <div className="h-1.5 w-full bg-white/5 rounded-full mt-2 overflow-hidden">
               <div className={`h-full rounded-full transition-all duration-300 ${getStrengthClass()}`} />
             </div>

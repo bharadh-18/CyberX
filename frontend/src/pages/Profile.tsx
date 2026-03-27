@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import axios from 'axios';
 import { User as UserIcon, LockKeyhole, Calendar, KeyRound } from 'lucide-react';
 
 interface ProfileData {
@@ -20,8 +21,12 @@ export default function Profile() {
       try {
         const res = await api.get('/users/profile');
         setProfile(res.data);
-      } catch (err: any) {
-        setErrorMsg(err.response?.data?.detail || 'Failed to load profile');
+      } catch (err: unknown) {
+        if (axios.isAxiosError(err)) {
+          setErrorMsg(err.response?.data?.detail || 'Failed to load profile');
+        } else {
+          setErrorMsg('Secure profile decryption failed');
+        }
       }
     };
     fetchProfile();
@@ -32,8 +37,12 @@ export default function Profile() {
       setMfaError('');
       const res = await api.post('/auth/mfa/setup');
       setMfaData(res.data);
-    } catch (error: any) {
-      setMfaError(error.response?.data?.detail || 'Failed to setup MFA');
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        setMfaError(error.response?.data?.detail || 'Failed to setup MFA');
+      } else {
+        setMfaError('MFA provisioning error');
+      }
     }
   };
 

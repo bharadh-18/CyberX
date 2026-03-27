@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { Activity, ShieldAlert, ShieldCheck, LockKeyhole, Ban, ActivitySquare, Server } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -20,43 +20,46 @@ interface SecurityEvent {
   ip: string;
 }
 
+interface ChartPoint {
+  time: string;
+  count: number;
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<SecurityMetrics | null>(null);
   const [events, setEvents] = useState<SecurityEvent[]>([]);
-  
-  interface ChartPoint {
-    time: string;
-    count: number;
-  }
 
-  // Transform events for Recharts (Count per hour)
-  const chartData = events.reduce((acc: ChartPoint[], current) => {
-    const time = new Date(current.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const existing = acc.find(item => item.time === time);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      acc.push({ time, count: 1 });
-    }
-    return acc;
-  }, []).reverse(); // Oldest to newest for the chart
-
-  const fetchDashboardData = async () => {
-    try {
-      const [metricsRes, eventsRes] = await Promise.all([
-        api.get('/security/metrics'),
-        api.get('/security/events')
-      ]);
-      setMetrics(metricsRes.data);
-      setEvents(eventsRes.data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  // Memoize chart data to prevent expensive recalculations on every render
+  const chartData = useMemo(() => {
+    const data = events.reduce((acc: ChartPoint[], current) => {
+      const time = new Date(current.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const existing = acc.find(item => item.time === time);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        acc.push({ time, count: 1 });
+      }
+      return acc;
+    }, []);
+    return [...data].reverse(); // Oldest to newest
+  }, [events]);
 
   useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const [metricsRes, eventsRes] = await Promise.all([
+          api.get('/security/metrics'),
+          api.get('/security/events')
+        ]);
+        setMetrics(metricsRes.data);
+        setEvents(eventsRes.data);
+      } catch (e) {
+        console.error('Failed to fetch dashboard telemetry', e);
+      }
+    };
+
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 10000); // Poll every 10s
+    const interval = setInterval(fetchDashboardData, 15000); // Relaxed polling to 15s
     return () => clearInterval(interval);
   }, []);
 
@@ -114,7 +117,6 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Chart Section */}
         <div className="lg:col-span-2 glass-card p-6">
           <div className="flex items-center gap-2 mb-6">
             <Activity className="w-5 h-5 text-indigo-400" />
@@ -142,7 +144,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Audit Log Table */}
         <div className="glass-card p-6 overflow-hidden flex flex-col">
           <div className="flex items-center gap-2 mb-6">
             <ShieldCheck className="w-5 h-5 text-emerald-400" />

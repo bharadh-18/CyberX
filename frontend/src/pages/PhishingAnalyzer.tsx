@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import axios from 'axios';
 import { Bot, BugPlay, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
 interface AnalysisResult {
@@ -45,8 +46,12 @@ export default function PhishingAnalyzer() {
 
       setResult({ decision: decision, scores: scores });
 
-    } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'Analysis failed. Make sure text is under 5000 chars.');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setErrorMsg(err.response?.data?.detail || 'Analysis failed. Make sure text is under 5000 chars.');
+      } else {
+        setErrorMsg('Security engine timeout.');
+      }
     } finally {
       setIsSubmitting(false);
     }

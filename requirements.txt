@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+aiosqlite
+pydantic
+pydantic-settings
+email-validator
+python-jose[cryptography]
+argon2-cffi
+pyotp
+cryptography
+redis
+httpx
+python-multipart
+qrcode
+pytest
+pytest-asyncio

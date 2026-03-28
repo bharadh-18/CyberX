@@ -5,8 +5,9 @@ from app.auth.dependencies import get_current_active_user
 from app.services.phishing_detector import phishing_detector
 from app.services.encryption import encrypt_field
 from app.routes.auth import log_security_event
-from app.firebase_config import db as firestore_db
-from firebase_admin import firestore
+from app.database import async_session_factory
+from app.models.models import PhishingAnalysis
+from sqlalchemy import select
 import uuid
 
 router = APIRouter(prefix="/comments", tags=["comments"])
@@ -19,24 +20,28 @@ async def create_comment(
     _=Depends(RequirePermission("comment:create"))
 ):
     analysis_result = phishing_detector.analyze(payload.text)
-    
+
     if analysis_result["decision"] == "blocked":
         log_security_event(request, "PHISHING_DETECTED", "HIGH", analysis_result)
-        
+
     analysis_id = str(uuid.uuid4())
-    doc_ref = firestore_db.collection("users").document(current_user["id"]).collection("analyses").document(analysis_id)
-    doc_ref.set({
-        "comment_text_encrypted": encrypt_field(payload.text),
-        "ml_score": analysis_result["ml_score"],
-        "url_reputation_score": analysis_result["url_reputation_score"],
-        "regex_score": analysis_result["regex_score"],
-        "final_score": analysis_result["final_score"],
-        "decision": analysis_result["decision"],
-        "extracted_urls": analysis_result["extracted_urls"],
-        "threat_indicators": analysis_result["threat_indicators"],
-        "created_at": firestore.SERVER_TIMESTAMP
-    })
-    
+
+    async with async_session_factory() as session:
+        analysis = PhishingAnalysis(
+            id=uuid.UUID(analysis_id),
+            user_id=uuid.UUID(current_user["id"]),
+            comment_text_encrypted=encrypt_field(payload.text),
+            ml_score=analysis_result["ml_score"],
+            url_reputation_score=analysis_result["url_reputation_score"],
+            regex_score=analysis_result["regex_score"],
+            final_score=analysis_result["final_score"],
+            decision=analysis_result["decision"],
+            extracted_urls=analysis_result["extracted_urls"],
+            threat_indicators=analysis_result["threat_indicators"],
+        )
+        session.add(analysis)
+        await session.commit()
+
     return CommentResponse(
         analysis_id=analysis_id,
         status="processing" if analysis_result["decision"] == "warning" else analysis_result["decision"],
@@ -55,11 +60,17 @@ async def get_comment_status(
     current_user: dict = Depends(get_current_active_user),
     _=Depends(RequirePermission("comment:read"))
 ):
-    doc_ref = firestore_db.collection("users").document(current_user["id"]).collection("analyses").document(analysis_id)
-    record = doc_ref.get()
-    
-    if not record.exists:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(PhishingAnalysis)
+            .where(
+                PhishingAnalysis.id == uuid.UUID(analysis_id),
+                PhishingAnalysis.user_id == uuid.UUID(current_user["id"])
+            )
+        )
+        record = result.scalars().first()
+
+    if not record:
         raise HTTPException(status_code=404, detail="Analysis not found")
-        
-    data = record.to_dict()
-    return CommentStatusResponse(analysis_id=analysis_id, decision=data.get("decision"))
+
+    return CommentStatusResponse(analysis_id=analysis_id, decision=record.decision)

@@ -47,7 +47,10 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 async def serve_frontend():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
+from app.database import init_db
+
 @app.on_event("startup")
 async def startup_event():
     generate_keys()
+    await init_db()
 

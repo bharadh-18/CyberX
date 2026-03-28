@@ -5,8 +5,6 @@ import { Shield, AlertCircle, LogIn, UserPlus, Timer } from 'lucide-react';
 import PremiumButton from '@/components/ui/PremiumButton';
 import { useAuthStore } from '@/stores/authStore';
 import { jwtDecode } from 'jwt-decode';
-import { firestoreDb } from '@/lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
 
 interface DecodedToken {
   sub: string;
@@ -54,19 +52,6 @@ export default function Login() {
     };
   }, [lockoutUntil]);
 
-  const logBruteForceAttempt = async (targetEmail: string) => {
-    try {
-      await addDoc(collection(firestoreDb, 'audit_logs'), {
-        event: 'BRUTE_FORCE_ATTEMPT',
-        severity: 'HIGH',
-        email: targetEmail,
-        timestamp: new Date(),
-        details: `Account locked for ${LOCKOUT_SECONDS}s after ${MAX_ATTEMPTS} failed attempts`
-      });
-    } catch (e) {
-      console.warn('Audit log write failed:', e);
-    }
-  };
 
   const handleSubmit = async () => {
     if (isLockedOut) return;
@@ -123,7 +108,6 @@ export default function Login() {
           setLockoutUntil(lockUntil);
           setLockoutRemaining(LOCKOUT_SECONDS);
           setErrorMsg(`Brute-force lockout engaged. Authentication disabled for ${LOCKOUT_SECONDS}s.`);
-          logBruteForceAttempt(email);
           setLoading(false);
           return;
         }

@@ -3,7 +3,7 @@ from typing import List
 
 class Settings(BaseSettings):
     SECRET_KEY: str = "change_me_in_production_secret_key"
-    FIREBASE_API_KEY: str = "replace_with_firebase_web_api_key_from_console"
+    NEON_DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_cs6wZ4ACBRSE@ep-dry-dew-a18weayj-pooler.ap-southeast-1.aws.neon.tech/neondb?ssl=require"
     REDIS_URL: str = "redis://localhost:6379/0"
     MASTER_ENCRYPTION_KEY: str = "0000000000000000000000000000000000000000000000000000000000000000" # 64 hex chars = 32 bytes
     CORS_ORIGINS: List[str] = [
@@ -21,5 +21,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

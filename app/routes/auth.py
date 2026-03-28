@@ -54,12 +54,69 @@ async def login(request: Request, payload: FirebaseAuthRequest, response: Respon
     """
     return await sync_user_logic(request, payload, response, db)
 
-@router.post("/sync-user", response_model=TokenResponse)
-async def sync_user(request: Request, payload: FirebaseAuthRequest, response: Response, db: AsyncSession = Depends(get_db)):
+@router.post("/sync-profile", response_model=TokenResponse)
+async def sync_profile(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     """
-    Dedicated Bridge: Synchronizes Firebase Identity with Neon DB Profiles.
+    NEON SYNC BRIDGE: Reliable UPSERT triggered after Firebase Auth.
+    Expects Authorization: Bearer <idToken>
     """
-    return await sync_user_logic(request, payload, response, db)
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    
+    id_token = auth_header.split(" ")[1]
+    
+    # Verify Firebase Token
+    decoded_token = verify_firebase_token(id_token)
+    if not decoded_token:
+        raise HTTPException(status_code=401, detail="Invalid Security Token")
+
+    firebase_uid = decoded_token.get("uid")
+    email = decoded_token.get("email", "").lower()
+    
+    if not firebase_uid or not email:
+        raise HTTPException(status_code=400, detail="Incomplete Identity Payload")
+
+    # 2. Atomic UPSERT Logic with 503 Escalation
+    try:
+        email_hash = hashlib.sha256(email.encode()).hexdigest()
+        
+        # Performance check + UPSERT
+        result = await db.execute(
+            select(User).where((User.firebase_uid == firebase_uid) | (User.email_hash == email_hash))
+        )
+        user = result.scalars().first()
+
+        if not user:
+            logger.info(f"Provisioning Fail-Safe Profile for: {email}")
+            user = User(
+                firebase_uid=firebase_uid,
+                email_encrypted=encrypt_field(email),
+                email_hash=email_hash,
+                roles=["user"],
+                account_status="active"
+            )
+            db.add(user)
+            await db.flush()
+        else:
+            user.firebase_uid = firebase_uid
+            user.account_status = "active"
+            user.last_login_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(user)
+        
+        user_id = str(user.id)
+        return await _complete_login(request, response, user_id, user.roles or ["user"], user, db)
+        
+    except Exception as e:
+        logger.error(f"NEON RELIABILITY FAILURE: {e}")
+        await db.rollback()
+        # 503 Service Unavailable tells the frontend to hold the navigation
+        raise HTTPException(
+            status_code=503, 
+            detail="Database Sync Failed: User vault synchronization failed."
+        )
 
 async def sync_user_logic(request: Request, payload: FirebaseAuthRequest, response: Response, db: AsyncSession):
     # 1. Verify Firebase ID Token

@@ -82,37 +82,76 @@ export default function Login() {
       // 2. Get ID Token
       const idToken = await userCredential.user.getIdToken();
 
-      // 3. Sync with Neon DB via Backend
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/login`, {
-        id_token: idToken,
-      });
+      // 3. Sync with Neon DB via Reliability Bridge (Bearer Token)
+      try {
+        const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/sync-profile`, {}, {
+          headers: {
+            Authorization: `Bearer ${idToken}`
+          }
+        });
 
-      if (response.data.mfa_required) {
-        navigate('/mfa-verify', { state: { token: response.data.token } });
+        setProfileCreated(true);
+        const decoded = jwtDecode<DecodedToken>(response.data.access_token);
+        setAuth(response.data.access_token, {
+          id: decoded.sub,
+          email: email,
+          roles: decoded.roles || [],
+        });
+
+        setFailedAttempts(0);
+        // CRITICAL FIX: Only navigate if backend returns 200 OK
+        navigate('/dashboard');
+      } catch (syncError: any) {
+        console.error("Reliability Sync Error:", syncError);
+        
+        const errorDetail = syncError.response?.data?.detail || syncError.message;
+        
+        if (syncError.response?.status === 503) {
+          setErrorMsg(`Database Sync Failed: User vault synchronization failed.`);
+        } else {
+          setErrorMsg(`Database Sync Failed: ${errorDetail}`);
+        }
+        
+        setLoading(false);
         return;
       }
 
-      setProfileCreated(true);
-      const decoded = jwtDecode<DecodedToken>(response.data.access_token);
-      setAuth(response.data.access_token, {
-        id: decoded.sub,
-        email: email,
-        roles: decoded.roles || [],
-      });
-
-      setFailedAttempts(0);
-      navigate('/dashboard');
     } catch (error: any) {
-      console.error(error);
+      console.error("Auth process error:", error);
       let detail = 'Authentication failed. Please check your credentials.';
       
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
-        detail = 'Invalid email or password.';
-      } else if (error.code === 'auth/email-already-in-use') {
-        detail = 'This email is already registered in our secure vault.';
-      } else if (error.response?.data?.detail) {
-        detail = error.response.data.detail;
+      // Handle 'Failed to fetch' or Network Issues
+      if (error.message === 'Failed to fetch' || error.message === 'Network Error') {
+        detail = 'SECURE GATEWAY ERROR: NETWORK ERROR. Verifying bridge connectivity...';
+        // Auto-trigger connectivity test
+        axios.get(`${import.meta.env.VITE_API_URL}/health`).catch(() => {
+          console.warn("Backend Health Check Failed during Auth Error.");
+        });
       }
+
+      // 1. Handle Firebase Specific Errors
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/wrong-password':
+          case 'auth/user-not-found':
+            detail = 'Invalid email or password.';
+            break;
+          case 'auth/email-already-in-use':
+            detail = 'This email is already registered in our secure vault.';
+            break;
+          case 'auth/weak-password':
+            detail = 'Password is too weak. Minimum 6 characters required.';
+            break;
+          case 'auth/invalid-email':
+            detail = 'The email address is improperly formatted.';
+            break;
+          case 'auth/operation-not-allowed':
+            detail = 'Email/Password authentication is disabled. Contact admin.';
+            break;
+          default:
+            detail = `Firebase Auth Error: ${error.message}`;
+        }
+      } 
 
       if (isLogin) {
         const newAttempts = failedAttempts + 1;
@@ -126,17 +165,11 @@ export default function Login() {
           setLoading(false);
           return;
         }
-        
-        if (error.message === 'Network Error') {
-          setErrorMsg('Connecting to secure gateway... (System may be initializing). Please wait 10s and retry.');
-        } else {
-          setErrorMsg(`${detail} (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
-        }
+        setErrorMsg(`${detail} (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
       } else {
         setErrorMsg(detail);
       }
-    }
- finally {
+    } finally {
       setLoading(false);
     }
   };

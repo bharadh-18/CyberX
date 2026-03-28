@@ -1,5 +1,5 @@
 import { useAuthStore } from '@/stores/authStore';
-import { ShieldCheck, Lock, Activity, Bot, Zap, Network } from 'lucide-react';
+import { ShieldCheck, Lock, Activity, LogIn, Zap, Network } from 'lucide-react';
 import PremiumButton from '@/components/ui/PremiumButton';
 
 export default function Landing() {
@@ -35,7 +35,7 @@ export default function Landing() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
         >
           {!accessToken ? (
-            <PremiumButton to="/login" label="Continue with Google" icon={Bot} />
+            <PremiumButton to="/login" label="Secure Login" icon={LogIn} />
           ) : (
             <PremiumButton to="/dashboard" label="Command Center" icon={Lock} />
           )}

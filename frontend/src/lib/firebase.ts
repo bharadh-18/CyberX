@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAVuCqvvny15UKHf46mjkifHDgE9qN3u0Q",
@@ -15,4 +15,3 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const firestoreDb = getFirestore(app);
 export const firebaseAuth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();

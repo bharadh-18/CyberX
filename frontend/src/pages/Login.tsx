@@ -1,24 +1,27 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Shield, AlertCircle, LogIn, UserPlus, Bot } from 'lucide-react';
+import { Shield, AlertCircle, LogIn, UserPlus, Timer } from 'lucide-react';
 import PremiumButton from '@/components/ui/PremiumButton';
 import { useAuthStore } from '@/stores/authStore';
 import { jwtDecode } from 'jwt-decode';
-import { signInWithPopup } from 'firebase/auth';
-import { firebaseAuth, googleProvider } from '@/lib/firebase';
+import { firestoreDb } from '@/lib/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 
 interface DecodedToken {
   sub: string;
   roles: string[];
 }
 
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_SECONDS = 60;
+
 export default function Login() {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isFlipped, setIsFlipped] = useState(false); // Track LogIn vs SignUP
+  const [isFlipped, setIsFlipped] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -26,41 +29,51 @@ export default function Login() {
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    setErrorMsg('');
+  // Rate Limiting State
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+  const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isLockedOut = lockoutUntil !== null && Date.now() < lockoutUntil;
+
+  useEffect(() => {
+    if (lockoutUntil) {
+      lockoutTimerRef.current = setInterval(() => {
+        const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+        if (remaining <= 0) {
+          setLockoutUntil(null);
+          setLockoutRemaining(0);
+          setFailedAttempts(0);
+          setErrorMsg('');
+          if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+        } else {
+          setLockoutRemaining(remaining);
+        }
+      }, 1000);
+    }
+    return () => {
+      if (lockoutTimerRef.current) clearInterval(lockoutTimerRef.current);
+    };
+  }, [lockoutUntil]);
+
+  const logBruteForceAttempt = async (email: string) => {
     try {
-      const result = await signInWithPopup(firebaseAuth, googleProvider);
-      const idToken = await result.user.getIdToken();
-
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/google`, 
-        { id_token: idToken },
-        { headers: { 'Content-Type': 'application/json' } }
-      );
-
-      if (response.data.mfa_required) {
-        navigate('/mfa-verify', { state: { token: response.data.token } });
-        return;
-      }
-
-      const decoded = jwtDecode<DecodedToken>(response.data.access_token);
-      setAuth(response.data.access_token, {
-        id: decoded.sub,
-        email: result.user.email || '',
-        displayName: result.user.displayName || '',
-        roles: decoded.roles || [],
+      await addDoc(collection(firestoreDb, 'audit_logs'), {
+        event: 'BRUTE_FORCE_ATTEMPT',
+        severity: 'HIGH',
+        email: email,
+        timestamp: new Date(),
+        details: `Account locked for ${LOCKOUT_SECONDS}s after ${MAX_ATTEMPTS} failed attempts`
       });
-
-      navigate('/dashboard');
-    } catch (error: any) {
-      console.error(error);
-      setErrorMsg(error.response?.data?.detail || 'Google Authentication failed. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.warn('Audit log write failed:', e);
     }
   };
 
   const handleEmailAuth = async (isRegister: boolean) => {
+    if (isLockedOut) return;
+
     setLoading(true);
     setErrorMsg('');
     try {
@@ -73,7 +86,7 @@ export default function Login() {
           email: registerEmail,
           password: registerPassword
         });
-        setIsFlipped(false); // Flip back to login
+        setIsFlipped(false);
         setErrorMsg('Provisioning successful. Please authenticate.');
         setRegisterPassword('');
       } else {
@@ -98,11 +111,31 @@ export default function Login() {
           roles: decoded.roles || [],
         });
 
+        setFailedAttempts(0);
         navigate('/dashboard');
       }
     } catch (error: any) {
       console.error(error);
-      setErrorMsg(error.response?.data?.detail || 'Authentication failed. Please try again.');
+      const detail = error.response?.data?.detail || 'Authentication failed. Invalid credentials.';
+      
+      if (!isRegister) {
+        const newAttempts = failedAttempts + 1;
+        setFailedAttempts(newAttempts);
+
+        if (newAttempts >= MAX_ATTEMPTS) {
+          const lockUntil = Date.now() + LOCKOUT_SECONDS * 1000;
+          setLockoutUntil(lockUntil);
+          setLockoutRemaining(LOCKOUT_SECONDS);
+          setErrorMsg(`Brute-force lockout engaged. Authentication disabled for ${LOCKOUT_SECONDS}s.`);
+          logBruteForceAttempt(loginEmail);
+          setLoading(false);
+          return;
+        }
+
+        setErrorMsg(`${detail} (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
+      } else {
+        setErrorMsg(detail);
+      }
     } finally {
       setLoading(false);
     }
@@ -136,13 +169,13 @@ export default function Login() {
               <h2 className="flip-card__title">Sign In</h2>
               
               <div className="flip-card__form">
-
                 <input 
                   className="flip-card__input" 
                   placeholder="Organization Email" 
                   type="email" 
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
+                  disabled={isLockedOut}
                 />
                 <input 
                   className="flip-card__input" 
@@ -150,33 +183,25 @@ export default function Login() {
                   type="password" 
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
+                  disabled={isLockedOut}
                 />
                 
-                <div className="pt-2 border-t border-white/5 w-full space-y-3">
-                  <PremiumButton 
-                    onClick={() => handleEmailAuth(false)}
-                    disabled={loading}
-                    label={loading ? 'Verifying...' : 'Authenticate'}
-                    icon={LogIn}
-                    className="w-full justify-center"
-                  />
-
-                  {/* Google SSO Button matching Enterprise Gold Theme */}
-                  <div className="relative flex items-center py-2">
-                    <div className="flex-grow border-t border-white/10"></div>
-                    <span className="flex-shrink-0 mx-2 text-white/30 text-[9px] tracking-[0.2em] font-bold">OR</span>
-                    <div className="flex-grow border-t border-white/10"></div>
-                  </div>
-
-                  <PremiumButton 
-                    onClick={handleGoogleSignIn}
-                    disabled={loading}
-                    label="Continue with Google"
-                    icon={Bot}
-                    className="w-full justify-center !bg-slate-800 hover:!bg-slate-700 !border-slate-600 !text-white"
-                  />
+                <div className="pt-2 border-t border-white/5 w-full">
+                  {isLockedOut ? (
+                    <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-widest">
+                      <Timer className="w-4 h-4 animate-pulse" />
+                      Locked — {lockoutRemaining}s remaining
+                    </div>
+                  ) : (
+                    <PremiumButton 
+                      onClick={() => handleEmailAuth(false)}
+                      disabled={loading}
+                      label={loading ? 'Verifying...' : 'Authenticate'}
+                      icon={LogIn}
+                      className="w-full justify-center"
+                    />
+                  )}
                 </div>
-
               </div>
 
               {errorMsg && !isFlipped && (
@@ -184,7 +209,10 @@ export default function Login() {
                   <AlertCircle className="w-5 h-5 shrink-0" /> <span className="leading-tight">{errorMsg}</span>
                 </div>
               )}
-              
+
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed mt-2 opacity-60">
+                Authorized access only. All sessions are monitored under Zero-Trust protocol.
+              </p>
             </div>
 
             {/* BACK: SIGN UP */}

@@ -1,13 +1,7 @@
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
+import { Outlet } from 'react-router-dom';
 
 export default function PrivateRoute() {
-  const { accessToken, isProfileCreated } = useAuthStore();
-  
-  // Guard evaluation: Must have token AND confirmed Neon DB profile
-  if (!accessToken || !isProfileCreated) {
-    return <Navigate to="/login" replace />;
-  }
-
+  // ARCHITECTURE FLATTENING: Bypassing auth check to provide direct dashboard access.
+  // We rely on the backend 'Guest Mode' for non-authenticated sessions.
   return <Outlet />;
 }

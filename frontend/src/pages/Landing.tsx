@@ -1,9 +1,7 @@
-import { useAuthStore } from '@/stores/authStore';
-import { ShieldCheck, Lock, Activity, LogIn, Zap, Network } from 'lucide-react';
+import { ShieldCheck, Activity, Zap, Network } from 'lucide-react';
 import PremiumButton from '@/components/ui/PremiumButton';
 
 export default function Landing() {
-  const { accessToken } = useAuthStore();
 
   return (
     <div className="relative min-h-screen pt-24 pb-20 px-4 overflow-hidden flex flex-col items-center justify-center">
@@ -34,11 +32,7 @@ export default function Landing() {
         <div 
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
         >
-          {!accessToken ? (
-            <PremiumButton to="/login" label="Secure Login" icon={LogIn} />
-          ) : (
-            <PremiumButton to="/dashboard" label="Command Center" icon={Lock} />
-          )}
+          <PremiumButton to="/dashboard" label="Access Command Center" icon={ShieldCheck} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-32 text-left">

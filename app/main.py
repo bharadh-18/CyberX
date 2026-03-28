@@ -66,8 +66,12 @@ async def serve_frontend():
 
 from app.database import init_db
 
+import asyncio
+
 @app.on_event("startup")
 async def startup_event():
     generate_keys()
-    await init_db()
+    # Non-blocking DB init: prevents startup hang if Neon is slow
+    asyncio.create_task(init_db())
+    logger.info("CyberX Backend started. Database initialization running in background.")
 

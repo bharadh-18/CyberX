@@ -11,6 +11,13 @@ engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
+    connect_args={
+        "command_timeout": 30,
+        "server_settings": {
+            "application_name": "CyberX Backend",
+            "search_path": "public"
+        }
+    }
 )
 
 async_session_factory = async_sessionmaker(

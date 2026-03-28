@@ -83,38 +83,49 @@ export default function Login() {
       const idToken = await userCredential.user.getIdToken();
 
       // 3. Sync with Neon DB via Reliability Bridge (Bearer Token)
-      try {
-        const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/sync-profile`, {}, {
-          headers: {
-            Authorization: `Bearer ${idToken}`
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
+      
+      const attemptSync = async () => {
+        try {
+          const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/sync-profile`, {}, {
+            headers: {
+              Authorization: `Bearer ${idToken}`
+            },
+            timeout: 10000 // 10s timeout for sync
+          });
+
+          setProfileCreated(true);
+          const decoded = jwtDecode<DecodedToken>(response.data.access_token);
+          setAuth(response.data.access_token, {
+            id: decoded.sub,
+            email: email,
+            roles: decoded.roles || [],
+          });
+
+          setFailedAttempts(0);
+          navigate('/dashboard');
+        } catch (syncError: any) {
+          console.error(`Sync Attempt ${retryCount + 1} Failed:`, syncError);
+          
+          if (retryCount < MAX_RETRIES && (syncError.response?.status === 503 || !syncError.response)) {
+            retryCount++;
+            setErrorMsg(`Database Syncing... (Attempt ${retryCount}/${MAX_RETRIES})`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return attemptSync();
           }
-        });
 
-        setProfileCreated(true);
-        const decoded = jwtDecode<DecodedToken>(response.data.access_token);
-        setAuth(response.data.access_token, {
-          id: decoded.sub,
-          email: email,
-          roles: decoded.roles || [],
-        });
-
-        setFailedAttempts(0);
-        // CRITICAL FIX: Only navigate if backend returns 200 OK
-        navigate('/dashboard');
-      } catch (syncError: any) {
-        console.error("Reliability Sync Error:", syncError);
-        
-        const errorDetail = syncError.response?.data?.detail || syncError.message;
-        
-        if (syncError.response?.status === 503) {
-          setErrorMsg(`Database Sync Failed: User vault synchronization failed.`);
-        } else {
-          setErrorMsg(`Database Sync Failed: ${errorDetail}`);
+          const errorDetail = syncError.response?.data?.detail || syncError.message;
+          if (syncError.response?.status === 503) {
+            setErrorMsg(`Database Sync Failed: User vault synchronization failed.`);
+          } else {
+            setErrorMsg(`Database Sync Failed: ${errorDetail}`);
+          }
+          setLoading(false);
         }
-        
-        setLoading(false);
-        return;
-      }
+      };
+
+      await attemptSync();
 
     } catch (error: any) {
       console.error("Auth process error:", error);

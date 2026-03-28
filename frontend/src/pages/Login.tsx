@@ -24,7 +24,7 @@ export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
 
   const [email, setEmail] = useState('vedhan@gmail.com');
-  const [password, setPassword] = useState('12345');
+  const [password, setPassword] = useState('123456');
 
   // Rate Limiting State
   const [failedAttempts, setFailedAttempts] = useState(0);

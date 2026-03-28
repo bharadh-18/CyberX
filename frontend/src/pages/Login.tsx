@@ -21,13 +21,10 @@ export default function Login() {
   const { setAuth } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
 
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  
-  const [registerEmail, setRegisterEmail] = useState('');
-  const [registerPassword, setRegisterPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // Rate Limiting State
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -57,12 +54,12 @@ export default function Login() {
     };
   }, [lockoutUntil]);
 
-  const logBruteForceAttempt = async (email: string) => {
+  const logBruteForceAttempt = async (targetEmail: string) => {
     try {
       await addDoc(collection(firestoreDb, 'audit_logs'), {
         event: 'BRUTE_FORCE_ATTEMPT',
         severity: 'HIGH',
-        email: email,
+        email: targetEmail,
         timestamp: new Date(),
         details: `Account locked for ${LOCKOUT_SECONDS}s after ${MAX_ATTEMPTS} failed attempts`
       });
@@ -71,32 +68,22 @@ export default function Login() {
     }
   };
 
-  const handleEmailAuth = async (isRegister: boolean) => {
+  const handleSubmit = async () => {
     if (isLockedOut) return;
+
+    if (!email || !password) {
+      setErrorMsg('Organization Email and Security Token are required.');
+      return;
+    }
 
     setLoading(true);
     setErrorMsg('');
     try {
-      if (isRegister) {
-        if (!registerEmail || !registerPassword) {
-          setErrorMsg('Work Email and Token required.');
-          setLoading(false); return;
-        }
-        await axios.post(`${import.meta.env.VITE_API_URL}/auth/register`, {
-          email: registerEmail,
-          password: registerPassword
-        });
-        setIsFlipped(false);
-        setErrorMsg('Provisioning successful. Please authenticate.');
-        setRegisterPassword('');
-      } else {
-        if (!loginEmail || !loginPassword) {
-          setErrorMsg('Organization Email and Security Token required.');
-          setLoading(false); return;
-        }
+      if (isLogin) {
+        // --- SIGN IN ---
         const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/login`, {
-          email: loginEmail,
-          password: loginPassword,
+          email,
+          password,
         });
 
         if (response.data.mfa_required) {
@@ -107,18 +94,27 @@ export default function Login() {
         const decoded = jwtDecode<DecodedToken>(response.data.access_token);
         setAuth(response.data.access_token, {
           id: decoded.sub,
-          email: loginEmail,
+          email: email,
           roles: decoded.roles || [],
         });
 
         setFailedAttempts(0);
         navigate('/dashboard');
+      } else {
+        // --- SIGN UP ---
+        await axios.post(`${import.meta.env.VITE_API_URL}/auth/register`, {
+          email,
+          password,
+        });
+        setIsLogin(true);
+        setPassword('');
+        setErrorMsg('Account provisioned successfully. Please authenticate.');
       }
     } catch (error: any) {
       console.error(error);
       const detail = error.response?.data?.detail || 'Authentication failed. Invalid credentials.';
-      
-      if (!isRegister) {
+
+      if (isLogin) {
         const newAttempts = failedAttempts + 1;
         setFailedAttempts(newAttempts);
 
@@ -127,11 +123,10 @@ export default function Login() {
           setLockoutUntil(lockUntil);
           setLockoutRemaining(LOCKOUT_SECONDS);
           setErrorMsg(`Brute-force lockout engaged. Authentication disabled for ${LOCKOUT_SECONDS}s.`);
-          logBruteForceAttempt(loginEmail);
+          logBruteForceAttempt(email);
           setLoading(false);
           return;
         }
-
         setErrorMsg(`${detail} (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
       } else {
         setErrorMsg(detail);
@@ -142,127 +137,101 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-wrapper relative overflow-hidden bg-black">
+    <div className="min-h-screen flex items-center justify-center pt-24 pb-12 px-4 relative overflow-hidden bg-black">
       {/* Background Ambience */}
       <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="card-switch">
-        <label className="switch">
-          <input 
-            type="checkbox" 
-            className="toggle" 
-            checked={isFlipped}
-            onChange={() => setIsFlipped(!isFlipped)}
-          />
-          <span className="slider"></span>
-          <span className="card-side"></span>
+      <div className="relative w-full max-w-md z-10">
+        {/* The Card */}
+        <div className="bg-[rgba(10,10,10,0.9)] backdrop-blur-xl border border-[rgba(212,175,55,0.2)] rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-10">
           
-          <div className="flip-card__inner">
-            {/* FRONT: LOG IN */}
-            <div className="flip-card__front">
-              <div className="flex justify-center mb-0">
-                <div className="p-3 bg-white/5 rounded-2xl border border-white/10">
-                  <Shield className="w-8 h-8 text-amber-500" />
-                </div>
-              </div>
-              <h2 className="flip-card__title">Sign In</h2>
-              
-              <div className="flip-card__form">
-                <input 
-                  className="flip-card__input" 
-                  placeholder="Organization Email" 
-                  type="email" 
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  disabled={isLockedOut}
-                />
-                <input 
-                  className="flip-card__input" 
-                  placeholder="Security Token" 
-                  type="password" 
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  disabled={isLockedOut}
-                />
-                
-                <div className="pt-2 border-t border-white/5 w-full">
-                  {isLockedOut ? (
-                    <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-widest">
-                      <Timer className="w-4 h-4 animate-pulse" />
-                      Locked — {lockoutRemaining}s remaining
-                    </div>
-                  ) : (
-                    <PremiumButton 
-                      onClick={() => handleEmailAuth(false)}
-                      disabled={loading}
-                      label={loading ? 'Verifying...' : 'Authenticate'}
-                      icon={LogIn}
-                      className="w-full justify-center"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {errorMsg && !isFlipped && (
-                <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 shrink-0" /> <span className="leading-tight">{errorMsg}</span>
-                </div>
+          {/* Header */}
+          <div className="flex justify-center mb-4">
+            <div className={`p-3 rounded-2xl border ${isLogin ? 'bg-white/5 border-white/10' : 'bg-amber-500/10 border-amber-500/20 shadow-[0_0_30px_rgba(212,175,55,0.1)]'}`}>
+              {isLogin ? (
+                <Shield className="w-8 h-8 text-amber-500" />
+              ) : (
+                <UserPlus className="w-8 h-8 text-amber-500" />
               )}
-
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed mt-2 opacity-60">
-                Authorized access only. All sessions are monitored under Zero-Trust protocol.
-              </p>
-            </div>
-
-            {/* BACK: SIGN UP */}
-            <div className="flip-card__back">
-              <div className="flex justify-center mb-2">
-                <div className="p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 shadow-[0_0_30px_rgba(212,175,55,0.1)]">
-                  <UserPlus className="w-8 h-8 text-amber-500" />
-                </div>
-              </div>
-              <h2 className="flip-card__title">Sign Up</h2>
-              
-              <div className="flip-card__form">
-                <input 
-                  className="flip-card__input" 
-                  placeholder="Work Email" 
-                  type="email" 
-                  value={registerEmail}
-                  onChange={(e) => setRegisterEmail(e.target.value)}
-                />
-                <input 
-                  className="flip-card__input" 
-                  placeholder="Token Signature" 
-                  type="password" 
-                  value={registerPassword}
-                  onChange={(e) => setRegisterPassword(e.target.value)}
-                />
-                
-                <div className="pt-4 border-t border-white/5 w-full">
-                  <PremiumButton 
-                    onClick={() => handleEmailAuth(true)}
-                    disabled={loading}
-                    label={loading ? 'Provisioning...' : 'Provision Account'}
-                    icon={UserPlus}
-                    className="w-full justify-center"
-                  />
-                </div>
-              </div>
-
-              {errorMsg && isFlipped && (
-                <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest rounded-lg flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" /> {errorMsg}
-                </div>
-              )}
-
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed mt-2 opacity-60">
-                Enrollment requires active corporate identity verification.
-              </p>
             </div>
           </div>
-        </label>
+          <h2 className="text-center text-3xl font-black uppercase tracking-tight text-white mb-6">
+            {isLogin ? 'Sign In' : 'Sign Up'}
+          </h2>
+
+          {/* Error / Success Block */}
+          {errorMsg && (
+            <div className={`mb-5 p-3 rounded-lg flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${
+              errorMsg.includes('successfully') || errorMsg.includes('Provisioning successful')
+                ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                : 'bg-red-500/10 border border-red-500/20 text-red-500'
+            }`}>
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span className="leading-tight">{errorMsg}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <div className="space-y-4">
+            <input
+              className="flip-card__input"
+              placeholder="Organization Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isLockedOut}
+            />
+            <input
+              className="flip-card__input"
+              placeholder="Security Token"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLockedOut}
+            />
+
+            <div className="pt-4 border-t border-white/5">
+              {isLockedOut ? (
+                <div className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-widest">
+                  <Timer className="w-4 h-4 animate-pulse" />
+                  Locked — {lockoutRemaining}s remaining
+                </div>
+              ) : (
+                <PremiumButton
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  label={loading ? 'Processing...' : (isLogin ? 'Authenticate' : 'Provision Account')}
+                  icon={isLogin ? LogIn : UserPlus}
+                  className="w-full justify-center"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Toggle Link */}
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setErrorMsg('');
+                setPassword('');
+              }}
+              type="button"
+              className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
+            >
+              {isLogin ? "Don't have an account? " : 'Already have an account? '}
+              <span className="text-amber-500 underline underline-offset-4">
+                {isLogin ? 'Sign Up' : 'Sign In'}
+              </span>
+            </button>
+          </div>
+
+        </div>
+
+        <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest text-center mt-6 opacity-60">
+          Authorized access only. All sessions are monitored under Zero-Trust protocol.
+        </p>
       </div>
     </div>
   );

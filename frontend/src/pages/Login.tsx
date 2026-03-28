@@ -111,9 +111,11 @@ export default function Login() {
           setLoading(false);
           return;
         }
-        setErrorMsg(`${detail} (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
-      } else {
-        setErrorMsg(detail);
+        if (error.message === 'Network Error') {
+          setErrorMsg('Connecting to secure gateway... (System may be initializing). Please wait 10s and retry.');
+        } else {
+          setErrorMsg(detail);
+        }
       }
     } finally {
       setLoading(false);

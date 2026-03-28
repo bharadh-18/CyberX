@@ -28,9 +28,11 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://cyberx-b72d0.web.app", 
+        "https://cyberx-b72d0.web.app",
+        "https://cyberx-b72d0.firebaseapp.com",
         "http://localhost:5173",
-        "http://localhost:5176" 
+        "http://localhost:5176",
+        "http://localhost:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],

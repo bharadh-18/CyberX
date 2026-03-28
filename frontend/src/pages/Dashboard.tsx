@@ -36,13 +36,23 @@ export default function Dashboard() {
 
   // Memoize chart data to prevent expensive recalculations on every render
   const chartData = useMemo(() => {
+    if (!Array.isArray(events)) return [];
+    
     const data = events.reduce((acc: ChartPoint[], current) => {
-      const time = new Date(current.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const existing = acc.find(item => item.time === time);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        acc.push({ time, count: 1 });
+      try {
+        if (!current || !current.timestamp) return acc;
+        const date = new Date(current.timestamp);
+        if (isNaN(date.getTime())) return acc;
+        
+        const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const existing = acc.find(item => item.time === time);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          acc.push({ time, count: 1 });
+        }
+      } catch (e) {
+        console.error('Chart data processing error:', e);
       }
       return acc;
     }, []);

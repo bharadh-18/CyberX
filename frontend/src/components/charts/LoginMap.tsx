@@ -62,17 +62,29 @@ export default function LoginMap() {
         attribution='&copy; <a href="https://carto.com">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
       />
-      {locations.map((loc, i) => (
-        <Marker key={i} position={[loc.lat, loc.lon]} icon={defaultIcon}>
-          <Popup>
-            <div style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: 12 }}>
-              <strong>{loc.city}, {loc.country}</strong><br />
-              IP: {loc.ip}<br />
-              {new Date(loc.timestamp).toLocaleString()}
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+      {locations.map((loc, i) => {
+        if (!loc || typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return null;
+        
+        let displayDate = 'Unknown Time';
+        try {
+          const date = new Date(loc.timestamp);
+          if (!isNaN(date.getTime())) {
+            displayDate = date.toLocaleString();
+          }
+        } catch (e) {}
+
+        return (
+          <Marker key={i} position={[loc.lat, loc.lon]} icon={defaultIcon}>
+            <Popup>
+              <div style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: 12 }}>
+                <strong>{loc.city}, {loc.country}</strong><br />
+                IP: {loc.ip}<br />
+                {displayDate}
+              </div>
+            </Popup>
+          </Marker>
+        );
+      })}
       {locations.length > 0 && (
         <Circle
           center={[locations[0].lat, locations[0].lon]}

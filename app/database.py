@@ -27,6 +27,11 @@ async def get_db():
 
 async def init_db():
     """Create all tables on startup."""
-    async with engine.begin() as conn:
-        from app.models import models  # noqa: F401  — ensure models are imported
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            from app.models import models  # noqa: F401  — ensure models are imported
+            await conn.run_sync(Base.metadata.create_all)
+            print("Successfully initialized Neon database schemas.")
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize Neon PostgreSQL: {e}")
+        # We don't raise here so the app can still serve health check for debugging

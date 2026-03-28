@@ -21,16 +21,16 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Order of middleware addition matters in FastAPI (last-added is outermost).
-# We want CORSMiddleware to be outermost to handle preflights correctly.
+# 3. Explicit Security Bridge: CORS & Zero-Trust Middleware
 from starlette.middleware.cors import CORSMiddleware
+
+# Outermost: CORS must handle pre-flights before any other logic
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://cyberx-b72d0.web.app",
         "https://cyberx-b72d0.firebaseapp.com",
         "http://localhost:5173",
-        "http://localhost:5174",
         "http://localhost:5176",
         "http://localhost:3000"
     ],
@@ -41,6 +41,7 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# Critical: Security Audit & Validation Layers
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimiterMiddleware)

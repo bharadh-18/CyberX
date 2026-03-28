@@ -52,6 +52,16 @@ async def login(request: Request, payload: FirebaseAuthRequest, response: Respon
     """
     Unified Firebase Sync: Verifies token and UPSERTS user into Neon DB.
     """
+    return await sync_user_logic(request, payload, response, db)
+
+@router.post("/sync-user", response_model=TokenResponse)
+async def sync_user(request: Request, payload: FirebaseAuthRequest, response: Response, db: AsyncSession = Depends(get_db)):
+    """
+    Dedicated Bridge: Synchronizes Firebase Identity with Neon DB Profiles.
+    """
+    return await sync_user_logic(request, payload, response, db)
+
+async def sync_user_logic(request: Request, payload: FirebaseAuthRequest, response: Response, db: AsyncSession):
     # 1. Verify Firebase ID Token
     decoded_token = verify_firebase_token(payload.id_token)
     if not decoded_token:
@@ -64,41 +74,49 @@ async def login(request: Request, payload: FirebaseAuthRequest, response: Respon
         raise HTTPException(status_code=400, detail="Incomplete Firebase token payload")
 
     # 2. Atomic UPSERT Logic
-    # Check for existing user by firebase_uid OR email_hash (migration safety)
-    email_hash = hashlib.sha256(email.encode()).hexdigest()
-    result = await db.execute(
-        select(User).where((User.firebase_uid == firebase_uid) | (User.email_hash == email_hash))
-    )
-    user = result.scalars().first()
-
-    if not user:
-        # Create new user profile in Neon on the fly
-        logger.info(f"Provisioning new Neon profile for firebase_uid: {firebase_uid}")
-        
-        roles = ["user"]
-        if "admin" in email or "bharadh" in email:
-            roles.append("admin")
-
-        user = User(
-            firebase_uid=firebase_uid,
-            email_encrypted=encrypt_field(email),
-            email_hash=email_hash,
-            password_hash=None, # Managed by Firebase
-            roles=roles,
-            account_status="active"
+    try:
+        # Check for existing user by firebase_uid OR email_hash (migration safety)
+        email_hash = hashlib.sha256(email.encode()).hexdigest()
+        result = await db.execute(
+            select(User).where((User.firebase_uid == firebase_uid) | (User.email_hash == email_hash))
         )
-        db.add(user)
-        # Flush to get user.id
-        await db.flush()
-        log_security_event(request, "ATOMIC_USER_PROVISIONED", "INFO", {"user_id": str(user.id), "email": email})
-    else:
-        # Update existing user sync
-        if not user.firebase_uid:
-            user.firebase_uid = firebase_uid
-        user.account_status = "active" # Ensure normalized status
+        user = result.scalars().first()
 
-    await db.commit()
-    await db.refresh(user)
+        if not user:
+            # Create new user profile in Neon on the fly
+            logger.info(f"Provisioning new Neon profile for firebase_uid: {firebase_uid}")
+            
+            roles = ["user"]
+            if "admin" in email or "bharadh" in email:
+                roles.append("admin")
+
+            user = User(
+                firebase_uid=firebase_uid,
+                email_encrypted=encrypt_field(email),
+                email_hash=email_hash,
+                password_hash=None, # Managed by Firebase
+                roles=roles,
+                account_status="active"
+            )
+            db.add(user)
+            # Flush to get user.id
+            await db.flush()
+            log_security_event(request, "ATOMIC_USER_PROVISIONED", "INFO", {"user_id": str(user.id), "email": email})
+        else:
+            # Update existing user sync
+            if not user.firebase_uid:
+                user.firebase_uid = firebase_uid
+            user.account_status = "active" # Ensure normalized status
+
+        await db.commit()
+        await db.refresh(user)
+    except Exception as e:
+        logger.error(f"Database sync failed for {email}: {e}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=500, 
+            detail="User vault synchronization failed. Please contact security admin."
+        )
 
     user_id = str(user.id)
     
@@ -110,9 +128,7 @@ async def register(request: Request, payload: FirebaseAuthRequest, db: AsyncSess
     """Alias for register using the same UPSERT logic."""
     # Register in this architecture is just a pre-login check or an idempotent UPSERT
     # For now, we reuse the login logic which handles the UPSERT.
-    # In a real app, you might want to call Firebase's register API first, 
-    # but the frontend handles that.
-    return {"message": "Use /login for atomic sync after Firebase registration"}
+    return {"message": "Use /sync-user for atomic sync after Firebase registration"}
 
 
 async def _complete_login(request: Request, response: Response, user_id: str, roles: list, user, db: AsyncSession):

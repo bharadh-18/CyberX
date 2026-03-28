@@ -4,7 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
-import { AlertCircle, Lock } from 'lucide-react';
+import { AlertCircle, Lock, ShieldCheck, Bot } from 'lucide-react';
+import PremiumButton from '@/components/ui/PremiumButton';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -22,28 +23,20 @@ export default function FakeLogin() {
     resolver: zodResolver(loginSchema)
   });
 
-  const onSubmit = async (data: LoginFormData) => {
+  const onSubmit = async (_data: LoginFormData) => {
     setLoading(true);
     try {
-      // 1. Log the captured credentials (in a real scenario, this would go to a hacker's DB)
       console.warn("⚠️ DECOY PAGE: Credentials intercepted!");
-      console.warn("Email:", data.email);
-      console.warn("Password length:", data.password.length);
-
-      // 2. Trigger the behavioral attack simulation in the backend
       await api.post('/security/simulate', {
-        clicks_count: 15,       // Extreme clicks to trigger > 0.8 Threshold
-        unknown_domain: true,   // High Risk: Phishing domain
+        clicks_count: 15,
+        unknown_domain: true,
         unusual_time: true,
-        ip_change: true         // High Risk: Anomalous session location
+        ip_change: true
       });
-
-      // 3. Show the "You've been phished" educational warning
       setIsExposed(true);
-      
     } catch (err) {
       console.error(err);
-      setIsExposed(true); // Show warning anyway for the demo
+      setIsExposed(true);
     } finally {
       setLoading(false);
     }
@@ -59,22 +52,30 @@ export default function FakeLogin() {
           <h1 className="text-4xl font-black text-red-500 uppercase tracking-tight">You've Been Phished!</h1>
           
           <div className="glass-card p-8 border-red-500/30 text-left space-y-4">
-            <h3 className="text-xl font-bold text-white mb-2">What just happened?</h3>
-            <p className="text-slate-300">You entered your credentials into a <strong>simulated decoy page</strong>. If this were a real attack, your account would now be compromised.</p>
+            <h3 className="text-xl font-bold text-white mb-2 uppercase tracking-tighter">What just happened?</h3>
+            <p className="text-slate-300 text-sm">You entered your credentials into a <strong>simulated decoy page</strong>. If this were a real attack, your account would now be compromised.</p>
             
-            <div className="bg-black/40 p-4 rounded-xl border border-white/5 font-mono text-sm text-amber-400 space-y-2">
+            <div className="bg-black/40 p-4 rounded-xl border border-white/5 font-mono text-[10px] text-amber-500 space-y-2 uppercase tracking-widest">
               <div>&gt; Credential harvesting event logged</div>
-              <div>&gt; Behavioral telemetry sent to Security Command Center</div>
-              <div>&gt; Risk Score evaluated as <strong>CRITICAL</strong></div>
-              <div className="text-emerald-400 blink">&gt; Auto-Scan triggered on attacker's IP network...</div>
+              <div>&gt; Behavioral telemetry sent to Security Hub</div>
+              <div>&gt; Risk Score evaluated as <strong className="text-red-500">CRITICAL</strong></div>
+              <div className="text-emerald-500 animate-pulse">&gt; Auto-Scan triggered on attacker's IP...</div>
             </div>
             
-            <button 
-              onClick={() => navigate('/dashboard')}
-              className="w-full mt-6 py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition-all"
-            >
-              Return to Safe Dashboard
-            </button>
+            <div className="flex flex-col gap-4 pt-6 border-t border-white/5">
+              <PremiumButton 
+                onClick={() => navigate('/login')}
+                label="Return to Login"
+                icon={Bot}
+                className="w-full justify-center"
+              />
+              <PremiumButton 
+                onClick={() => navigate('/dashboard')}
+                label="Secure Dashboard"
+                icon={ShieldCheck}
+                className="w-full justify-center"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -83,11 +84,6 @@ export default function FakeLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5]">
-      {/* 
-        Intentionally generic, slightly outdated "Enterprise Dashboard" look 
-        to mimic a typical credential harvesting page. 
-        Notice it lacks the dark theme and neon features of the real app.
-      */}
       <div className="bg-white p-10 rounded-lg shadow-xl w-full max-w-md border-t-4 border-blue-600">
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4 text-white">
@@ -130,10 +126,6 @@ export default function FakeLogin() {
 
         <div className="mt-6 text-center text-xs text-gray-400">
           <p>© 2026 Enterprise Security Portal. All rights reserved.</p>
-          <div className="flex justify-center gap-4 mt-2">
-            <a href="#" className="hover:text-blue-600">Privacy Policy</a>
-            <a href="#" className="hover:text-blue-600">Terms of Service</a>
-          </div>
         </div>
       </div>
     </div>

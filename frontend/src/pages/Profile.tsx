@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import axios from 'axios';
-import { User as UserIcon, LockKeyhole, Calendar, KeyRound } from 'lucide-react';
+import { User as UserIcon, LockKeyhole, Calendar, KeyRound, ShieldCheck } from 'lucide-react';
+import PremiumButton from '@/components/ui/PremiumButton';
 
 interface ProfileData {
   id: string;
@@ -117,7 +118,12 @@ export default function Profile() {
         {!mfaData ? (
           <div>
             {mfaError && <div className="text-sm text-red-400 mb-3 bg-red-500/10 p-2 rounded">{mfaError}</div>}
-            <button onClick={setupMFA} className="btn-primary py-2 px-6 rounded-md text-sm font-semibold w-full sm:w-auto">Setup Authenticator</button>
+            <PremiumButton 
+              onClick={setupMFA} 
+              label="Setup Authenticator" 
+              icon={ShieldCheck}
+              className="w-full sm:w-auto mt-4" 
+            />
           </div>
         ) : (
           <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-4">

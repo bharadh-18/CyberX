@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import RiskTimeline from '@/components/charts/RiskTimeline';
 import LoginMap from '@/components/charts/LoginMap';
 import BehaviorComparison from '@/components/charts/BehaviorComparison';
+import Loader from '@/components/ui/Loader';
 
 interface SecurityMetrics {
   active_sessions: number;
@@ -82,15 +83,15 @@ export default function Dashboard() {
     <div className="max-w-7xl mx-auto px-6 py-8 mt-16 space-y-8 animate-fade-up" style={{ animationDuration: '0.8s' }}>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Security Command Center</h1>
-          <p className="text-[var(--text-secondary)] mt-2 font-medium">Real-time observability into zero-trust telemetry</p>
+          <h1 className="text-4xl font-black tracking-tighter text-shimmer-gold uppercase leading-tight">Security Command Center</h1>
+          <p className="text-slate-500 mt-2 font-bold tracking-widest uppercase text-xs opacity-80">Real-time observability into zero-trust telemetry</p>
         </div>
         {metrics && (
-          <div className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg flex items-center gap-3">
-            <Server className="w-5 h-5 text-indigo-400" />
+          <div className="px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-3">
+            <Server className="w-5 h-5 text-amber-500" />
             <div className="text-right">
-              <div className="text-xs text-[var(--text-secondary)]">System Load</div>
-              <div className="font-mono text-sm font-semibold">{metrics.system_load} %</div>
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">System Load</div>
+              <div className="font-mono text-sm font-semibold text-amber-500">{metrics.system_load} %</div>
             </div>
           </div>
         )}
@@ -128,17 +129,19 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        <div className="h-32 glass-card animate-pulse flex items-center justify-center text-slate-500">Loading telemetry...</div>
+        <div className="h-48 glass-card flex items-center justify-center">
+          <Loader />
+        </div>
       )}
 
       {/* ── Row 2: Risk Timeline + Audit Log ───────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-up" style={{ animationDelay: '0.1s', opacity: 0, animationFillMode: 'forwards' }}>
-        <div className="lg:col-span-2 glass-card p-6 h-[400px] flex flex-col hover:border-indigo-500/30">
+        <div className="lg:col-span-2 glass-card p-6 h-[400px] flex flex-col hover:border-amber-500/30">
           <div className="flex items-center gap-3 mb-6 shrink-0">
-            <div className="p-2 bg-red-500/10 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-red-500" />
+            <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <TrendingUp className="w-5 h-5 text-amber-500" />
             </div>
-            <h3 className="font-semibold text-lg tracking-wide">Risk Score Timeline</h3>
+            <h3 className="font-bold text-lg tracking-tight uppercase text-white">Risk Score Timeline</h3>
           </div>
           <div className="flex-1 min-h-0 w-full">
             <RiskTimeline />
@@ -185,30 +188,30 @@ export default function Dashboard() {
 
       {/* ── Row 3: Event Frequency + Explainable AI Alerts ─────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-up" style={{ animationDelay: '0.2s', opacity: 0, animationFillMode: 'forwards' }}>
-        <div className="lg:col-span-2 glass-card p-6 h-[400px] flex flex-col hover:border-indigo-500/30">
+        <div className="lg:col-span-2 glass-card p-6 h-[400px] flex flex-col hover:border-amber-500/30">
           <div className="flex items-center gap-3 mb-6 shrink-0">
-            <div className="p-2 bg-indigo-500/10 rounded-lg">
-              <Activity className="w-5 h-5 text-indigo-500" />
+            <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <Activity className="w-5 h-5 text-amber-500" />
             </div>
-            <h3 className="font-semibold text-lg tracking-wide">Event Frequency Radar</h3>
+            <h3 className="font-bold text-lg tracking-tight uppercase text-white">Event Frequency Radar</h3>
           </div>
           <div className="flex-1 min-h-0 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#D4AF37" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#D4AF37" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                <XAxis dataKey="time" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                <XAxis dataKey="time" stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(99, 102, 241, 0.2)', borderRadius: '8px' }}
-                  itemStyle={{ color: '#6366f1', fontWeight: 'bold' }}
+                  contentStyle={{ backgroundColor: 'rgba(5, 5, 5, 0.95)', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '4px' }}
+                  itemStyle={{ color: '#D4AF37', fontWeight: 'bold' }}
                 />
-                <Area type="monotone" dataKey="count" stroke="#6366f1" fillOpacity={1} fill="url(#colorCount)" strokeWidth={2} />
+                <Area type="monotone" dataKey="count" stroke="#D4AF37" fillOpacity={1} fill="url(#colorCount)" strokeWidth={3} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

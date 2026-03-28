@@ -3,8 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import axios from 'axios';
-import { KeyRound, AlertCircle } from 'lucide-react';
+import { KeyRound, AlertCircle, Lock } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
+import PremiumButton from '@/components/ui/PremiumButton';
 
 interface DecodedToken {
   sub: string;
@@ -89,13 +90,13 @@ export default function MFAVerify() {
             </div>
           )}
           
-          <button
+          <PremiumButton 
             type="submit"
             disabled={isSubmitting || code.length !== 6}
-            className="w-full btn-primary py-2.5 rounded-lg font-semibold flex items-center justify-center disabled:opacity-50"
-          >
-            {isSubmitting ? 'Verifying...' : 'Verify Code'}
-          </button>
+            label={isSubmitting ? 'Verifying...' : 'Verify Identity'}
+            icon={Lock}
+            className="w-full justify-center mt-6"
+          />
         </form>
       </div>
     </div>

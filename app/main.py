@@ -27,7 +27,11 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=[
+        "https://cyberx-b72d0.web.app", 
+        "http://localhost:5173",
+        "http://localhost:5176" 
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

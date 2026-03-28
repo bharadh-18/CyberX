@@ -5,7 +5,6 @@ import AdminRoute from '@/components/common/AdminRoute';
 
 import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
-import Register from '@/pages/Register';
 import MFAVerify from '@/pages/MFAVerify';
 import Dashboard from '@/pages/Dashboard';
 import Profile from '@/pages/Profile';
@@ -28,7 +27,7 @@ function AppRoot() {
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/register" element={<Login />} />
             <Route path="/mfa-verify" element={<MFAVerify />} />
             
             {/* Protected Routes */}

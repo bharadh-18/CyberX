@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
-import { AlertTriangle, Zap, MousePointer2, Globe, Clock, Network, ShieldCheck, Activity } from 'lucide-react';
+import { AlertTriangle, Zap, MousePointer2, Globe, Clock, Network, ShieldCheck } from 'lucide-react';
+import PremiumButton from '@/components/ui/PremiumButton';
 
 interface SimulationResult {
   risk_score: number;
@@ -73,14 +74,12 @@ export default function PhishingSimulation() {
             Launch a simulated phishing page to demonstrate credential harvesting and automatic behavioral anomaly detection.
           </p>
         </div>
-        <a 
-          href="/fake-login" 
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-6 py-3 bg-white/5 hover:bg-indigo-500/20 text-indigo-300 font-semibold rounded-xl border border-indigo-500/30 transition-all whitespace-nowrap"
-        >
-          Launch Decoy Page
-        </a>
+        <PremiumButton 
+          to="/fake-login"
+          label="Launch Decoy Page"
+          icon={Globe}
+          className="whitespace-nowrap"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -188,20 +187,13 @@ export default function PhishingSimulation() {
             </div>
           </div>
 
-          <button 
+          <PremiumButton 
             onClick={triggerSimulation}
             disabled={loading}
-            className="w-full py-4 btn-primary transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? (
-              <Activity className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                <Zap className="w-5 h-5" />
-                Trigger Behavior Simulation
-              </>
-            )}
-          </button>
+            label={loading ? 'Simulating...' : 'Trigger Simulation'}
+            icon={Zap}
+            className="w-full justify-center py-6 mt-6 shadow-[0_0_20px_rgba(212,175,55,0.1)]"
+          />
         </div>
 
         {/* Results Card */}

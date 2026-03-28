@@ -21,33 +21,47 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.add_middleware(InputValidationMiddleware)
-app.add_middleware(RateLimiterMiddleware)
-app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
+# Order of middleware addition matters in FastAPI (last-added is outermost).
+# We want CORSMiddleware to be outermost to handle preflights correctly.
+from starlette.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://cyberx-b72d0.web.app",
         "https://cyberx-b72d0.firebaseapp.com",
         "http://localhost:5173",
+        "http://localhost:5174",
         "http://localhost:5176",
         "http://localhost:3000"
     ],
+    allow_origin_regex=r"https?://localhost:\d+|https://cyberx-.*\.web\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RateLimiterMiddleware)
+app.add_middleware(InputValidationMiddleware)
+
+# Include router AFTER all middleware to ensure they apply correctly
 app.include_router(api_router, prefix="/api/v1")
 
 # Serve static frontend files
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(STATIC_DIR):
+    os.makedirs(STATIC_DIR)
+    
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 async def serve_frontend():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"message": "CyberX API is running. Static frontend not detected."}
 
 from app.database import init_db
 

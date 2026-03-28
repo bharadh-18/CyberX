@@ -23,8 +23,8 @@ export default function Login() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isLogin, setIsLogin] = useState(true);
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('vedhan@gmail.com');
+  const [password, setPassword] = useState('12345');
 
   // Rate Limiting State
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -72,7 +72,7 @@ export default function Login() {
     if (isLockedOut) return;
 
     if (!email || !password) {
-      setErrorMsg('Organization Email and Security Token are required.');
+      setErrorMsg('Email and Password are required.');
       return;
     }
 
@@ -184,7 +184,7 @@ export default function Login() {
             />
             <input
               className="flip-card__input"
-              placeholder="Security Token"
+              placeholder="Password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

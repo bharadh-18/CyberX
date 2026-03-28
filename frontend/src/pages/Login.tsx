@@ -5,6 +5,11 @@ import { Shield, AlertCircle, LogIn, UserPlus, Timer } from 'lucide-react';
 import PremiumButton from '@/components/ui/PremiumButton';
 import { useAuthStore } from '@/stores/authStore';
 import { jwtDecode } from 'jwt-decode';
+import { firebaseAuth } from '@/lib/firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword 
+} from 'firebase/auth';
 
 interface DecodedToken {
   sub: string;
@@ -16,7 +21,7 @@ const LOCKOUT_SECONDS = 60;
 
 export default function Login() {
   const navigate = useNavigate();
-  const { setAuth } = useAuthStore();
+  const { setAuth, setProfileCreated } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLogin, setIsLogin] = useState(true);
@@ -64,40 +69,50 @@ export default function Login() {
     setLoading(true);
     setErrorMsg('');
     try {
+      let userCredential;
+      
       if (isLogin) {
-        // --- SIGN IN ---
-        const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/login`, {
-          email,
-          password,
-        });
-
-        if (response.data.mfa_required) {
-          navigate('/mfa-verify', { state: { token: response.data.token } });
-          return;
-        }
-
-        const decoded = jwtDecode<DecodedToken>(response.data.access_token);
-        setAuth(response.data.access_token, {
-          id: decoded.sub,
-          email: email,
-          roles: decoded.roles || [],
-        });
-
-        setFailedAttempts(0);
-        navigate('/dashboard');
+        // 1. Authenticate with Firebase
+        userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
       } else {
-        // --- SIGN UP ---
-        await axios.post(`${import.meta.env.VITE_API_URL}/auth/register`, {
-          email,
-          password,
-        });
-        setIsLogin(true);
-        setPassword('');
-        setErrorMsg('Account provisioned successfully. Please authenticate.');
+        // 1. Register with Firebase
+        userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
       }
+
+      // 2. Get ID Token
+      const idToken = await userCredential.user.getIdToken();
+
+      // 3. Sync with Neon DB via Backend
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/auth/login`, {
+        id_token: idToken,
+      });
+
+      if (response.data.mfa_required) {
+        navigate('/mfa-verify', { state: { token: response.data.token } });
+        return;
+      }
+
+      setProfileCreated(true);
+      const decoded = jwtDecode<DecodedToken>(response.data.access_token);
+      setAuth(response.data.access_token, {
+        id: decoded.sub,
+        email: email,
+        roles: decoded.roles || [],
+      });
+
+      setFailedAttempts(0);
+      navigate('/dashboard');
     } catch (error: any) {
       console.error(error);
-      const detail = error.response?.data?.detail || 'Authentication failed. Invalid credentials.';
+      let detail = 'Authentication failed. Please check your credentials.';
+      
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        detail = 'Invalid email or password.';
+      } else if (error.code === 'auth/email-already-in-use') {
+        detail = 'This email is already registered in our secure vault.';
+      } else if (error.response?.data?.detail) {
+        detail = error.response.data.detail;
+      }
 
       if (isLogin) {
         const newAttempts = failedAttempts + 1;
@@ -111,13 +126,17 @@ export default function Login() {
           setLoading(false);
           return;
         }
+        
         if (error.message === 'Network Error') {
           setErrorMsg('Connecting to secure gateway... (System may be initializing). Please wait 10s and retry.');
         } else {
-          setErrorMsg(detail);
+          setErrorMsg(`${detail} (Attempt ${newAttempts}/${MAX_ATTEMPTS})`);
         }
+      } else {
+        setErrorMsg(detail);
       }
-    } finally {
+    }
+ finally {
       setLoading(false);
     }
   };

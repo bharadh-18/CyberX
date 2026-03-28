@@ -4,9 +4,13 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=12)
 
+class FirebaseAuthRequest(BaseModel):
+    id_token: str
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    id_token: str | None = None
 
 class TokenResponse(BaseModel):
     access_token: str

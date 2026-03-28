@@ -2,10 +2,10 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 
 export default function PrivateRoute() {
-  const { accessToken } = useAuthStore();
+  const { accessToken, isProfileCreated } = useAuthStore();
   
-  // Basic guard evaluating whether the token exists in the store
-  if (!accessToken) {
+  // Guard evaluation: Must have token AND confirmed Neon DB profile
+  if (!accessToken || !isProfileCreated) {
     return <Navigate to="/login" replace />;
   }
 

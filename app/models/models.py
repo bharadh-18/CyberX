@@ -19,7 +19,8 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email_encrypted = Column(LargeBinary, nullable=False)
     email_hash = Column(String(64), unique=True, nullable=False, index=True)
-    password_hash = Column(String(256), nullable=False)
+    firebase_uid = Column(String(128), unique=True, nullable=False, index=True)
+    password_hash = Column(String(256), nullable=True) # Managed by Firebase
     mfa_enabled = Column(Boolean, default=False)
     mfa_secret_encrypted = Column(LargeBinary, nullable=True)
     roles = Column(JSON, default=["user"])
